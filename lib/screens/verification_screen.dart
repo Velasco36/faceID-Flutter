@@ -35,18 +35,17 @@ class _VerifyScreenState extends State<VerifyScreen> {
   Future<void> _initializeCamera() async {
     try {
       _controller = CameraController(
-        cameras[1], // Cámara frontal
+        cameras[1],
         ResolutionPreset.medium,
         enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.nv21, // Importante para Android
+        imageFormatGroup: ImageFormatGroup.nv21,
       );
 
       await _controller!.initialize();
       if (mounted) setState(() => _isCameraInitialized = true);
-
       _startImageStream();
     } catch (e) {
-        print('Error inicializando cámara: $e');
+      print('Error inicializando cámara: $e');
     }
   }
 
@@ -57,10 +56,9 @@ class _VerifyScreenState extends State<VerifyScreen> {
 
       try {
         final detected = await _faceDetector.detectFaceFromCameraImage(image);
-
         if (detected && !_faceDetected && !_verificando) {
           _faceDetected = true;
-          if (mounted) setState(() {}); // Mostrar que detectó rostro
+          if (mounted) setState(() {});
           await _stopStreamAndVerify();
         }
       } catch (e) {
@@ -73,11 +71,9 @@ class _VerifyScreenState extends State<VerifyScreen> {
 
   Future<void> _stopStreamAndVerify() async {
     try {
-      // Detener stream
       await _controller?.stopImageStream();
       await Future.delayed(const Duration(milliseconds: 200));
 
-      // Capturar foto
       final picture = await _controller?.takePicture();
       if (picture == null) {
         _reiniciarEscaneo();
@@ -92,7 +88,6 @@ class _VerifyScreenState extends State<VerifyScreen> {
         });
       }
 
-      // Llamar a la API
       final respuesta = await _apiService.verificarIdentidad(
         imagenPath: picture.path,
       );
@@ -101,18 +96,13 @@ class _VerifyScreenState extends State<VerifyScreen> {
 
       if (respuesta['exito'] == true) {
         final data = respuesta['data'];
-
         if (data['verificado'] == true) {
-          // ✅ Persona encontrada
           setState(() {
             _verificando = false;
             _nombreReconocido = data['persona']['nombre'];
           });
-
-          // Volver a escanear después de 3 segundos
           Future.delayed(const Duration(seconds: 3), _reiniciarEscaneo);
         } else {
-          // ❌ No encontrado
           setState(() {
             _verificando = false;
             _errorMensaje = 'Rostro no reconocido';
@@ -120,7 +110,6 @@ class _VerifyScreenState extends State<VerifyScreen> {
           Future.delayed(const Duration(seconds: 2), _reiniciarEscaneo);
         }
       } else {
-        // Error de red o servidor
         setState(() {
           _verificando = false;
           _errorMensaje = respuesta['error'] ?? 'Error al conectar';
@@ -159,6 +148,26 @@ class _VerifyScreenState extends State<VerifyScreen> {
     super.dispose();
   }
 
+  // ── Construye el fondo de cámara con aspect ratio correcto ──
+  Widget _buildCameraBackground() {
+    if (_fotoCapturada != null) {
+      return Image.file(File(_fotoCapturada!.path), fit: BoxFit.cover);
+    }
+
+    // Corrección de aspect ratio: llena la pantalla sin distorsión
+    return OverflowBox(
+      alignment: Alignment.center,
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: _controller!.value.previewSize!.height,
+          height: _controller!.value.previewSize!.width,
+          child: CameraPreview(_controller!),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -167,25 +176,23 @@ class _VerifyScreenState extends State<VerifyScreen> {
           ? Stack(
               fit: StackFit.expand,
               children: [
-                // ── Fondo: cámara o foto capturada ──
-                _fotoCapturada != null
-                    ? Image.file(File(_fotoCapturada!.path), fit: BoxFit.cover)
-                    : CameraPreview(_controller!),
+                // ── Fondo: cámara sin distorsión ──
+                _buildCameraBackground(),
 
-                // ── Marco de detección ──
+                // ── Marco ovalado ──
                 _buildMarcoDeteccion(),
 
                 // ── Texto superior ──
                 _buildTextoSuperior(),
 
-                // ── Overlay de loading (verificando) ──
+                // ── Loading overlay ──
                 if (_verificando) _buildLoadingOverlay(),
 
-                // ── Resultado: reconocido ──
+                // ── Resultado exitoso ──
                 if (_nombreReconocido != null && !_verificando)
                   _buildResultadoExito(),
 
-                // ── Resultado: no reconocido / error ──
+                // ── Resultado error ──
                 if (_errorMensaje != null && !_verificando)
                   _buildResultadoError(),
 
@@ -195,22 +202,19 @@ class _VerifyScreenState extends State<VerifyScreen> {
                   left: 16,
                   child: SafeArea(
                     child: IconButton(
-                      icon: const Icon(
-                        Icons.arrow_back_ios,
-                        color: Colors.white,
-                        size: 28,
-                      ),
+                      icon: const Icon(Icons.arrow_back_ios,
+                          color: Colors.white, size: 28),
                       onPressed: () => Navigator.pop(context),
                     ),
                   ),
                 ),
               ],
             )
-          : const Center(child: CircularProgressIndicator(color: Colors.white)),
+          : const Center(
+              child: CircularProgressIndicator(color: Colors.white)),
     );
   }
 
-  // ── Marco animado de detección ──
   Widget _buildMarcoDeteccion() {
     final color = _faceDetected ? Colors.green : Colors.white54;
     return Center(
@@ -225,7 +229,6 @@ class _VerifyScreenState extends State<VerifyScreen> {
     );
   }
 
-  // ── Texto superior según estado ──
   Widget _buildTextoSuperior() {
     String texto;
     Color color;
@@ -238,10 +241,7 @@ class _VerifyScreenState extends State<VerifyScreen> {
         _errorMensaje == null) {
       texto = 'Rostro detectado ✓';
       color = Colors.greenAccent;
-    } else if (_nombreReconocido != null) {
-      texto = '';
-      color = Colors.transparent;
-    } else if (_errorMensaje != null) {
+    } else if (_nombreReconocido != null || _errorMensaje != null) {
       texto = '';
       color = Colors.transparent;
     } else {
@@ -267,7 +267,6 @@ class _VerifyScreenState extends State<VerifyScreen> {
     );
   }
 
-  // ── Loading overlay ──
   Widget _buildLoadingOverlay() {
     return Container(
       color: Colors.black54,
@@ -280,23 +279,19 @@ class _VerifyScreenState extends State<VerifyScreen> {
             Text(
               'Verificando identidad...',
               style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w500,
-              ),
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500),
             ),
             SizedBox(height: 8),
-            Text(
-              'Por favor espera',
-              style: TextStyle(color: Colors.white60, fontSize: 14),
-            ),
+            Text('Por favor espera',
+                style: TextStyle(color: Colors.white60, fontSize: 14)),
           ],
         ),
       ),
     );
   }
 
-  // ── Resultado exitoso ──
   Widget _buildResultadoExito() {
     return Positioned(
       bottom: 80,
@@ -314,17 +309,14 @@ class _VerifyScreenState extends State<VerifyScreen> {
           children: [
             const Icon(Icons.verified_user, color: Colors.white, size: 40),
             const SizedBox(height: 10),
-            const Text(
-              'Bienvenido',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
-            ),
+            const Text('Bienvenido',
+                style: TextStyle(color: Colors.white70, fontSize: 14)),
             Text(
               _nombreReconocido!,
               style: const TextStyle(
-                color: Colors.white,
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-              ),
+                  color: Colors.white,
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
           ],
@@ -333,10 +325,8 @@ class _VerifyScreenState extends State<VerifyScreen> {
     );
   }
 
-  // ── Resultado error / no encontrado ──
   Widget _buildResultadoError() {
     final esNoReconocido = _errorMensaje == 'Rostro no reconocido';
-
     return Positioned(
       bottom: 80,
       left: 24,
@@ -355,26 +345,20 @@ class _VerifyScreenState extends State<VerifyScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              esNoReconocido ? Icons.person_off : Icons.wifi_off,
-              color: Colors.white,
-              size: 40,
-            ),
+            Icon(esNoReconocido ? Icons.person_off : Icons.wifi_off,
+                color: Colors.white, size: 40),
             const SizedBox(height: 10),
             Text(
               _errorMensaje!,
               style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 4),
-            const Text(
-              'Reintentando...',
-              style: TextStyle(color: Colors.white60, fontSize: 13),
-            ),
+            const Text('Reintentando...',
+                style: TextStyle(color: Colors.white60, fontSize: 13)),
           ],
         ),
       ),
