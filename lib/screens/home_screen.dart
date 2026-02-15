@@ -41,7 +41,7 @@ class HomeScreen extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const VerificationScreen(),
+                      builder: (context) => const VerifyScreen(),
                     ),
                   );
                 },

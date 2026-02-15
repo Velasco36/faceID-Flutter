@@ -1,11 +1,9 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart';
 import '../services/face_detector_service.dart';
+import '../services/api_service.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -17,9 +15,12 @@ class RegisterScreen extends StatefulWidget {
 class _RegisterScreenState extends State<RegisterScreen> {
   CameraController? _controller;
   final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _cedulaController = TextEditingController();
   bool _isCameraInitialized = false;
+  bool _isLoading = false;
   XFile? _capturedImage;
   final FaceDetectorService _faceDetector = FaceDetectorService();
+  final ApiService _apiService = ApiService();
 
   @override
   void initState() {
@@ -34,26 +35,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
 
     await _controller!.initialize();
-    setState(() {
-      _isCameraInitialized = true;
-    });
+    if (mounted) {
+      setState(() {
+        _isCameraInitialized = true;
+      });
+    }
   }
 
   Future<void> _takePicture() async {
-    if (_controller == null || !_controller!.value.isInitialized) {
-      return;
-    }
+    if (_controller == null || !_controller!.value.isInitialized) return;
 
     try {
       final image = await _controller!.takePicture();
 
-      // Detectar rostro en la imagen
+      // Detectar rostro localmente antes de enviar
       final faceData = await _faceDetector.detectFace(image.path);
 
       if (faceData == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No se detectó ningún rostro')),
+          _mostrarSnackbar(
+            'No se detectó ningún rostro. Intenta con mejor iluminación.',
+            error: true,
           );
         }
         return;
@@ -63,59 +65,94 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _capturedImage = image;
       });
     } catch (e) {
-      print('Error al tomar foto: $e');
+      _mostrarSnackbar('Error al tomar foto: $e', error: true);
     }
   }
 
   Future<void> _saveRegistration() async {
-    if (_capturedImage == null || _nameController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Completa todos los campos')),
-      );
+    final nombre = _nameController.text.trim();
+    final cedula = _cedulaController.text.trim();
+
+    // Validaciones locales
+    if (_capturedImage == null) {
+      _mostrarSnackbar('Toma una foto primero', error: true);
+      return;
+    }
+    if (nombre.isEmpty) {
+      _mostrarSnackbar('El nombre es requerido', error: true);
+      return;
+    }
+    if (cedula.isEmpty) {
+      _mostrarSnackbar('La cédula es requerida', error: true);
       return;
     }
 
-    try {
-      // Guardar imagen en almacenamiento local
-      final directory = await getApplicationDocumentsDirectory();
-      final imagePath = '${directory.path}/${_nameController.text}.jpg';
-      await File(_capturedImage!.path).copy(imagePath);
+    setState(() => _isLoading = true);
 
-      // Extraer características faciales
-      final faceData = await _faceDetector.detectFace(imagePath);
+    final resultado = await _apiService.registrarPersona(
+      cedula: cedula,
+      nombre: nombre,
+      imagenPath: _capturedImage!.path,
+    );
 
-      if (faceData == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Error al procesar el rostro')),
-          );
-        }
-        return;
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (resultado['exito'] == true) {
+      _mostrarSnackbar('✅ ${nombre} registrado exitosamente');
+      // Volver a la pantalla anterior después de 1 segundo
+      await Future.delayed(const Duration(seconds: 1));
+      if (mounted) Navigator.pop(context);
+    } else {
+      // Mostrar error detallado si hay detalles de validación
+      final error = resultado['error'] ?? 'Error desconocido';
+      final detalles = resultado['detalles'];
+      String mensaje = error;
+      if (detalles != null) {
+        final msgs = (detalles as Map).values.join('\n');
+        mensaje = '$error\n$msgs';
       }
-
-      // Guardar en SharedPreferences
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('registered_name', _nameController.text);
-      await prefs.setString('registered_image_path', imagePath);
-      await prefs.setString('face_data', faceData);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${_nameController.text} registrado correctamente'),
-          ),
-        );
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      print('Error al guardar: $e');
+      _mostrarDialogoError(mensaje);
     }
+  }
+
+  void _mostrarSnackbar(String mensaje, {bool error = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(mensaje),
+        backgroundColor: error ? Colors.red.shade700 : Colors.green.shade700,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  void _mostrarDialogoError(String mensaje) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.error_outline, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Error'),
+          ],
+        ),
+        content: Text(mensaje),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   void dispose() {
     _controller?.dispose();
     _nameController.dispose();
+    _cedulaController.dispose();
     _faceDetector.dispose();
     super.dispose();
   }
@@ -123,63 +160,195 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Registrar Persona')),
+      appBar: AppBar(
+        title: const Text('Registrar Persona'),
+        backgroundColor: Colors.blue.shade800,
+        foregroundColor: Colors.white,
+      ),
       body: _isCameraInitialized
-          ? Column(
+          ? Stack(
               children: [
-                Expanded(
-                  child: _capturedImage == null
-                      ? CameraPreview(_controller!)
-                      : Image.file(File(_capturedImage!.path)),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      TextField(
-                        controller: _nameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Nombre',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          if (_capturedImage == null)
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: _takePicture,
-                                icon: const Icon(Icons.camera),
-                                label: const Text('Tomar Foto'),
-                              ),
-                            )
-                          else ...[
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: () {
-                                  setState(() {
-                                    _capturedImage = null;
-                                  });
-                                },
-                                icon: const Icon(Icons.refresh),
-                                label: const Text('Reintentar'),
+                Column(
+                  children: [
+                    // Vista de cámara o imagen capturada
+                    Expanded(
+                      flex: 3,
+                      child: _capturedImage == null
+                          ? CameraPreview(_controller!)
+                          : Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                Image.file(
+                                  File(_capturedImage!.path),
+                                  fit: BoxFit.cover,
+                                ),
+                                Positioned(
+                                  top: 8,
+                                  right: 8,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.shade600,
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.check_circle,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'Rostro detectado',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
+
+                    // Formulario
+                    Expanded(
+                      flex: 2,
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          children: [
+                            // Campo cédula
+                            TextField(
+                              controller: _cedulaController,
+                              keyboardType: TextInputType.number,
+                              decoration: InputDecoration(
+                                labelText: 'Cédula',
+                                prefixIcon: const Icon(Icons.badge),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
                               ),
                             ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: _saveRegistration,
-                                icon: const Icon(Icons.save),
-                                label: const Text('Guardar'),
+                            const SizedBox(height: 12),
+
+                            // Campo nombre
+                            TextField(
+                              controller: _nameController,
+                              decoration: InputDecoration(
+                                labelText: 'Nombre completo',
+                                prefixIcon: const Icon(Icons.person),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
                               ),
+                            ),
+                            const SizedBox(height: 16),
+
+                            // Botones
+                            Row(
+                              children: [
+                                if (_capturedImage == null)
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      onPressed: _isLoading
+                                          ? null
+                                          : _takePicture,
+                                      icon: const Icon(Icons.camera_alt),
+                                      label: const Text('Tomar Foto'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.blue.shade700,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 14,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                else ...[
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed: _isLoading
+                                          ? null
+                                          : () => setState(
+                                              () => _capturedImage = null,
+                                            ),
+                                      icon: const Icon(Icons.refresh),
+                                      label: const Text('Reintentar'),
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 14,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      onPressed: _isLoading
+                                          ? null
+                                          : _saveRegistration,
+                                      icon: const Icon(Icons.cloud_upload),
+                                      label: const Text('Registrar'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.green.shade700,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 14,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                           ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Overlay de carga
+                if (_isLoading)
+                  Container(
+                    color: Colors.black54,
+                    child: const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          CircularProgressIndicator(color: Colors.white),
+                          SizedBox(height: 16),
+                          Text(
+                            'Registrando en el servidor...',
+                            style: TextStyle(color: Colors.white, fontSize: 16),
+                          ),
                         ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
               ],
             )
           : const Center(child: CircularProgressIndicator()),
