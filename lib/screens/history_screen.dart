@@ -2,6 +2,9 @@
 import 'package:flutter/material.dart';
 import 'navigation_footer.dart';
 import '../services/api_service.dart';
+import 'filters_widget.dart';
+import 'detail_person.dart'; // Asegúrate de importar la nueva vista
+
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
 
@@ -20,8 +23,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
   final TextEditingController _searchController = TextEditingController();
 
   // Filtros de fecha
-  String? _fechaInicio;
-  String? _fechaFin;
+  DateTime? _fechaInicio;
+  DateTime? _fechaFin;
 
   @override
   void initState() {
@@ -66,12 +69,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
-
   void _showFilterDialog() {
-    String tempFilter = _selectedFilter;
-    DateTime? tempFechaInicio;
-    DateTime? tempFechaFin;
-
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -79,179 +77,31 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ),
       isScrollControlled: true,
       builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Container(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Filtrar movimientos',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Filtro por tipo
-                  const Text(
-                    'Tipo de movimiento',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF617589),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      _buildFilterChipModal(
-                        'Todos',
-                        tempFilter == 'Todos',
-                        (selected) {
-                          setModalState(() => tempFilter = 'Todos');
-                        },
-                      ),
-                      _buildFilterChipModal(
-                        'Entradas',
-                        tempFilter == 'Entradas',
-                        (selected) {
-                          setModalState(() => tempFilter = 'Entradas');
-                        },
-                      ),
-                      _buildFilterChipModal(
-                        'Salidas',
-                        tempFilter == 'Salidas',
-                        (selected) {
-                          setModalState(() => tempFilter = 'Salidas');
-                        },
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // Filtro por fecha
-                  const Text(
-                    'Rango de fechas',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF617589),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  ListTile(
-                    title: const Text('Fecha inicio'),
-                    subtitle: Text(
-                      tempFechaInicio != null
-                          ? '${tempFechaInicio!.day}/${tempFechaInicio!.month}/${tempFechaInicio!.year}'
-                          : 'Seleccionar',
-                    ),
-                    trailing: const Icon(Icons.calendar_today),
-                    onTap: () async {
-                      final date = await showDatePicker(
-                        context: context,
-                        initialDate: tempFechaInicio ?? DateTime.now(),
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime.now(),
-                      );
-                      if (date != null) {
-                        setModalState(() => tempFechaInicio = date);
-                      }
-                    },
-                  ),
-                  ListTile(
-                    title: const Text('Fecha fin'),
-                    subtitle: Text(
-                      tempFechaFin != null
-                          ? '${tempFechaFin!.day}/${tempFechaFin!.month}/${tempFechaFin!.year}'
-                          : 'Seleccionar',
-                    ),
-                    trailing: const Icon(Icons.calendar_today),
-                    onTap: () async {
-                      final date = await showDatePicker(
-                        context: context,
-                        initialDate: tempFechaFin ?? DateTime.now(),
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime.now(),
-                      );
-                      if (date != null) {
-                        setModalState(() => tempFechaFin = date);
-                      }
-                    },
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextButton(
-                          onPressed: () {
-                            setModalState(() {
-                              tempFilter = 'Todos';
-                              tempFechaInicio = null;
-                              tempFechaFin = null;
-                            });
-                          },
-                          child: const Text('Limpiar'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            setState(() {
-                              _selectedFilter = tempFilter;
-                              _fechaInicio = tempFechaInicio != null
-                                  ? '${tempFechaInicio!.year}-${tempFechaInicio!.month.toString().padLeft(2, '0')}-${tempFechaInicio!.day.toString().padLeft(2, '0')}'
-                                  : null;
-                              _fechaFin = tempFechaFin != null
-                                  ? '${tempFechaFin!.year}-${tempFechaFin!.month.toString().padLeft(2, '0')}-${tempFechaFin!.day.toString().padLeft(2, '0')}'
-                                  : null;
-                            });
-
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF137FEC),
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: const Text('Aplicar'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
+        return FiltersWidget(
+          selectedFilter: _selectedFilter,
+          fechaInicio: _fechaInicio,
+          fechaFin: _fechaFin,
+          onApplyFilters: (filter, inicio, fin) {
+            setState(() {
+              _selectedFilter = filter;
+              _fechaInicio = inicio;
+              _fechaFin = fin;
+            });
+            // Aquí puedes agregar la lógica para filtrar los movimientos
+            _aplicarFiltros();
           },
         );
       },
     );
   }
 
-  Widget _buildFilterChipModal(
-    String label,
-    bool isSelected,
-    Function(bool) onSelected,
-  ) {
-    return FilterChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: onSelected,
-      backgroundColor: Colors.white,
-      selectedColor: const Color(0xFF137FEC).withOpacity(0.1),
-      checkmarkColor: const Color(0xFF137FEC),
-      labelStyle: TextStyle(
-        color: isSelected ? const Color(0xFF137FEC) : const Color(0xFF617589),
-        fontSize: 12,
+  void _aplicarFiltros() {
+    // Aquí implementas la lógica de filtrado
+    // Por ahora solo mostramos un mensaje
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Filtro aplicado: $_selectedFilter'),
+        duration: const Duration(seconds: 1),
       ),
     );
   }
@@ -401,7 +251,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             _fechaInicio = null;
                             _fechaFin = null;
                           });
-
+                          _aplicarFiltros();
                         },
                         child: Icon(Icons.close, size: 16, color: primaryColor),
                       ),
@@ -490,17 +340,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
               const SizedBox(height: 16),
 
               // Paginación info
-              if (_paginacion != null && _movimientos.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    'Página ${_paginacion!['pagina_actual']} de ${_paginacion!['paginas']}',
-                    style: TextStyle(
-                      color: secondaryTextColor,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
 
               // Navigation Footer
               NavigationFooter(
@@ -513,6 +352,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 primaryColor: primaryColor,
                 secondaryTextColor: secondaryTextColor,
               ),
+
             ],
           ),
         ),
@@ -544,7 +384,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            _showDetailDialog(context, movimiento);
+            // Navegar a la nueva vista de detalles
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => DetailPersonScreen(
+                  movimiento: movimiento,
+                ),
+              ),
+            );
           },
           borderRadius: BorderRadius.circular(12),
           child: Padding(
@@ -689,108 +537,5 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  void _showDetailDialog(
-    BuildContext context,
-    Map<String, dynamic> movimiento,
-  ) {
-    final isEntrada = movimiento['tipo'] == 'entrada';
-    final tieneImagen = movimiento['imagen_path'] != null;
-    final confianza = movimiento['confianza_verificacion'];
 
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text('Detalle del movimiento'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildDetailRow('ID', '${movimiento['id']}'),
-                const SizedBox(height: 8),
-                _buildDetailRow('Persona', movimiento['nombre_persona'] ?? 'Desconocido'),
-                const SizedBox(height: 8),
-                _buildDetailRow('Cédula', movimiento['cedula'] ?? 'N/A'),
-                const SizedBox(height: 8),
-                _buildDetailRow('Tipo', isEntrada ? 'Entrada' : 'Salida'),
-                const SizedBox(height: 8),
-                _buildDetailRow('Fecha', _formatFecha(movimiento['fecha_hora'])),
-                const SizedBox(height: 8),
-                _buildDetailRow('Hora', _formatHora(movimiento['fecha_hora'])),
-                if (confianza != null) ...[
-                  const SizedBox(height: 8),
-                  _buildDetailRow('Confianza', confianza.toString()),
-                ],
-                if (movimiento['observacion'] != null) ...[
-                  const SizedBox(height: 8),
-                  _buildDetailRow('Observación', movimiento['observacion']),
-                ],
-                if (tieneImagen) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Text(
-                        'Imagen:',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF111418),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          movimiento['imagen_path'],
-                          style: const TextStyle(
-                            color: Color(0xFF617589),
-                            fontSize: 11,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              style: TextButton.styleFrom(
-                foregroundColor: const Color(0xFF137FEC),
-              ),
-              child: const Text('Cerrar'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildDetailRow(String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 80,
-          child: Text(
-            '$label:',
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF111418),
-            ),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(color: Color(0xFF617589)),
-          ),
-        ),
-      ],
-    );
-  }
 }

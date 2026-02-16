@@ -320,6 +320,7 @@ class HomeScreen extends StatelessWidget {
                 primaryColor: primaryColor,
                 secondaryTextColor: secondaryTextColor,
               ),
+
             ],
           ),
         ),
@@ -380,4 +381,6 @@ class _AnimatedPulseState extends State<AnimatedPulse>
       ),
     );
   }
+
+
 }

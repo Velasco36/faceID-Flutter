@@ -9,6 +9,8 @@ class ApiService {
   // Ejemplo: http://192.168.1.100:5000
   static const String baseUrl = 'http://192.168.1.180:5000';
 
+
+
   // ─────────────────────────────────────────
   // REGISTRAR PERSONA
   // ─────────────────────────────────────────
