@@ -138,7 +138,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         backgroundColor: Colors.white.withOpacity(0.8),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF111418)),
+          icon: const Icon(Icons.person, color: Color(0xFF111418)),
           onPressed: () {
             Navigator.pop(context);
           },
