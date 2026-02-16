@@ -149,6 +149,33 @@ class ApiService {
     }
   }
 
+    // ─────────────────────────────────────────
+  // OBTENER ESTADÍSTICAS DE MOVIMIENTOS
+  // ─────────────────────────────────────────
+  Future<Map<String, dynamic>> obtenerEstadisticas() async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/movimientos'))
+          .timeout(const Duration(seconds: 10));
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'exito': true, 'data': data};
+      } else {
+        return {
+          'exito': false,
+          'error': data['error'] ?? 'Error al obtener estadísticas',
+        };
+      }
+    } on SocketException {
+      return {'exito': false, 'error': 'No se pudo conectar al servidor.'};
+    } on Exception catch (e) {
+      return {'exito': false, 'error': 'Error: ${e.toString()}'};
+    }
+  }
+
+
   // ─────────────────────────────────────────
   // HEALTH CHECK
   // ─────────────────────────────────────────
