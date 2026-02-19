@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
@@ -18,9 +19,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController _cedulaController = TextEditingController();
   bool _isCameraInitialized = false;
   bool _isLoading = false;
+  bool _processingFrame = false;
+  bool _faceDetected = false;
   XFile? _capturedImage;
   final FaceDetectorService _faceDetector = FaceDetectorService();
   final ApiService _apiService = ApiService();
+
+  // Control del stepper
+  int _currentStep = 0;
 
   @override
   void initState() {
@@ -29,44 +35,86 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _initializeCamera() async {
-    _controller = CameraController(
-      cameras[1], // Cámara frontal
-      ResolutionPreset.medium,
-    );
+    try {
+      _controller = CameraController(
+        cameras[1], // Cámara frontal
+        ResolutionPreset.medium,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.nv21,
+      );
 
-    await _controller!.initialize();
-    if (mounted) {
-      setState(() {
-        _isCameraInitialized = true;
-      });
+      await _controller!.initialize();
+      if (mounted) {
+        setState(() {
+          _isCameraInitialized = true;
+        });
+      }
+      _startImageStream();
+    } catch (e) {
+      print('Error inicializando cámara: $e');
     }
   }
 
-  Future<void> _takePicture() async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
+  void _startImageStream() {
+    _controller?.startImageStream((CameraImage image) async {
+      // Solo procesar si estamos en el paso 0 y no hemos detectado rostro aún
+      if (_processingFrame || _faceDetected || _currentStep != 0) return;
 
-    try {
-      final image = await _controller!.takePicture();
+      _processingFrame = true;
 
-      // Detectar rostro localmente antes de enviar
-      final faceData = await _faceDetector.detectFace(image.path);
-
-      if (faceData == null) {
-        if (mounted) {
-          _mostrarSnackbar(
-            'No se detectó ningún rostro. Intenta con mejor iluminación.',
-            error: true,
-          );
+      try {
+        final detected = await _faceDetector.detectFaceFromCameraImage(image);
+        if (detected && !_faceDetected && mounted) {
+          setState(() {
+            _faceDetected = true;
+          });
+          await _stopStreamAndCapturePhoto();
         }
+      } catch (e) {
+        print('Error en stream: $e');
+      } finally {
+        _processingFrame = false;
+      }
+    });
+  }
+
+  Future<void> _stopStreamAndCapturePhoto() async {
+    try {
+      await _controller?.stopImageStream();
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      final picture = await _controller?.takePicture();
+      if (picture == null || !mounted) {
+        _reiniciarDeteccion();
         return;
       }
 
       setState(() {
-        _capturedImage = image;
+        _capturedImage = picture;
       });
+
+      _mostrarSnackbar('✅ Rostro detectado correctamente');
+
+      // Avanzar al siguiente paso automáticamente
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (mounted) {
+        setState(() {
+          _currentStep = 1;
+        });
+      }
     } catch (e) {
-      _mostrarSnackbar('Error al tomar foto: $e', error: true);
+      print('Error capturando foto: $e');
+      _reiniciarDeteccion();
     }
+  }
+
+  void _reiniciarDeteccion() {
+    if (!mounted) return;
+    setState(() {
+      _faceDetected = false;
+      _processingFrame = false;
+    });
+    _startImageStream();
   }
 
   Future<void> _saveRegistration() async {
@@ -157,6 +205,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
+  Widget _buildCameraBackground() {
+    if (_capturedImage != null) {
+      return Image.file(File(_capturedImage!.path), fit: BoxFit.cover);
+    }
+
+    // Corrección de aspect ratio: llena la pantalla sin distorsión
+    return OverflowBox(
+      alignment: Alignment.center,
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: _controller!.value.previewSize!.height,
+          height: _controller!.value.previewSize!.width,
+          child: CameraPreview(_controller!),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -164,171 +231,42 @@ class _RegisterScreenState extends State<RegisterScreen> {
         title: const Text('Registrar Persona'),
         backgroundColor: Colors.blue.shade800,
         foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: _isCameraInitialized
-          ? Stack(
+          ? Column(
               children: [
-                Column(
-                  children: [
-                    // Vista de cámara o imagen capturada
-                    Expanded(
-                      flex: 3,
-                      child: _capturedImage == null
-                          ? CameraPreview(_controller!)
-                          : Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                Image.file(
-                                  File(_capturedImage!.path),
-                                  fit: BoxFit.cover,
-                                ),
-                                Positioned(
-                                  top: 8,
-                                  right: 8,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: Colors.green.shade600,
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    child: const Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.check_circle,
-                                          color: Colors.white,
-                                          size: 16,
-                                        ),
-                                        SizedBox(width: 4),
-                                        Text(
-                                          'Rostro detectado',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                    ),
-
-                    // Formulario
-                    Expanded(
-                      flex: 2,
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          children: [
-                            // Campo cédula
-                            TextField(
-                              controller: _cedulaController,
-                              keyboardType: TextInputType.number,
-                              decoration: InputDecoration(
-                                labelText: 'Cédula',
-                                prefixIcon: const Icon(Icons.badge),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-
-                            // Campo nombre
-                            TextField(
-                              controller: _nameController,
-                              decoration: InputDecoration(
-                                labelText: 'Nombre completo',
-                                prefixIcon: const Icon(Icons.person),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-
-                            // Botones
-                            Row(
-                              children: [
-                                if (_capturedImage == null)
-                                  Expanded(
-                                    child: ElevatedButton.icon(
-                                      onPressed: _isLoading
-                                          ? null
-                                          : _takePicture,
-                                      icon: const Icon(Icons.camera_alt),
-                                      label: const Text('Tomar Foto'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.blue.shade700,
-                                        foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 14,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  )
-                                else ...[
-                                  Expanded(
-                                    child: OutlinedButton.icon(
-                                      onPressed: _isLoading
-                                          ? null
-                                          : () => setState(
-                                              () => _capturedImage = null,
-                                            ),
-                                      icon: const Icon(Icons.refresh),
-                                      label: const Text('Reintentar'),
-                                      style: OutlinedButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 14,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: ElevatedButton.icon(
-                                      onPressed: _isLoading
-                                          ? null
-                                          : _saveRegistration,
-                                      icon: const Icon(Icons.cloud_upload),
-                                      label: const Text('Registrar'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.green.shade700,
-                                        foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 14,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ],
+                // Barra de progreso (Stepper)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 16,
+                  ),
+                  color: Colors.grey.shade100,
+                  child: Row(
+                    children: [
+                      _buildStepItem(0, 'Tomar Foto', Icons.camera_alt),
+                      Expanded(
+                        child: Container(
+                          height: 2,
+                          color: _currentStep > 0
+                              ? Colors.green
+                              : Colors.grey.shade400,
                         ),
                       ),
-                    ),
-                  ],
+                      _buildStepItem(1, 'Completar Datos', Icons.person),
+                    ],
+                  ),
+                ),
+
+                // Contenido según el paso actual
+                Expanded(
+                  child: _currentStep == 0
+                      ? _buildCameraStep()
+                      : _buildFormStep(),
                 ),
 
                 // Overlay de carga
@@ -352,6 +290,254 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ],
             )
           : const Center(child: CircularProgressIndicator()),
+    );
+  }
+
+  Widget _buildStepItem(int step, String label, IconData icon) {
+    final isActive = _currentStep >= step;
+    final isCompleted = _currentStep > step;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isCompleted
+                  ? Colors.green
+                  : isActive
+                  ? Colors.blue.shade700
+                  : Colors.grey.shade400,
+            ),
+            child: Center(
+              child: isCompleted
+                  ? const Icon(Icons.check, color: Colors.white, size: 18)
+                  : Text(
+                      '${step + 1}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+              color: isActive ? Colors.black87 : Colors.grey.shade600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCameraStep() {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Vista de cámara o imagen capturada
+        _buildCameraBackground(),
+
+        // Marco ovalado para detección
+        Center(
+          child: Container(
+            width: 220,
+            height: 280,
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: _faceDetected ? Colors.green : Colors.white54,
+                width: 2.5,
+              ),
+              borderRadius: BorderRadius.circular(120),
+            ),
+          ),
+        ),
+
+        // Texto superior de instrucciones
+        Positioned(
+          top: 100,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: Text(
+              _faceDetected
+                  ? 'Rostro detectado ✓'
+                  : 'Coloca tu rostro en el marco',
+              style: TextStyle(
+                color: _faceDetected ? Colors.greenAccent : Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                shadows: const [Shadow(color: Colors.black, blurRadius: 8)],
+              ),
+            ),
+          ),
+        ),
+
+        // Botón para volver a detectar si es necesario
+        if (_faceDetected)
+          Positioned(
+            bottom: 40,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _faceDetected = false;
+                    _capturedImage = null;
+                  });
+                  _startImageStream();
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('Reintentar detección'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue.shade700,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildFormStep() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        children: [
+          // Mini vista previa de la foto
+          if (_capturedImage != null)
+            Container(
+              margin: const EdgeInsets.only(bottom: 20),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.file(
+                      File(_capturedImage!.path),
+                      width: 80,
+                      height: 80,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Foto capturada',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Rostro verificado correctamente',
+                          style: TextStyle(color: Colors.green.shade700),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.edit),
+                    onPressed: () {
+                      setState(() {
+                        _currentStep = 0;
+                        _faceDetected = false;
+                        _capturedImage = null;
+                      });
+                      _startImageStream();
+                    },
+                  ),
+                ],
+              ),
+            ),
+
+          // Campo cédula
+          TextField(
+            controller: _cedulaController,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: 'Cédula',
+              prefixIcon: const Icon(Icons.badge),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Campo nombre
+          TextField(
+            controller: _nameController,
+            decoration: InputDecoration(
+              labelText: 'Nombre completo',
+              prefixIcon: const Icon(Icons.person),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Botones de navegación
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _isLoading
+                      ? null
+                      : () {
+                          setState(() {
+                            _currentStep = 0;
+                            _faceDetected =
+                                true; // Mantener el estado de detección
+                          });
+                        },
+                  icon: const Icon(Icons.arrow_back),
+                  label: const Text('Volver'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    side: BorderSide(color: Colors.grey.shade400),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _isLoading ? null : _saveRegistration,
+                  icon: const Icon(Icons.cloud_upload),
+                  label: const Text('Registrar'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green.shade700,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

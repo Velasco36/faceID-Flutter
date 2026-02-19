@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'navigation_footer.dart';
 import '../services/api_service.dart';
 import 'filters_widget.dart';
-import 'detail_person.dart'; // Asegúrate de importar la nueva vista
+import 'detail_person.dart';
+import 'search_filter.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -87,7 +88,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
               _fechaInicio = inicio;
               _fechaFin = fin;
             });
-            // Aquí puedes agregar la lógica para filtrar los movimientos
             _aplicarFiltros();
           },
         );
@@ -96,8 +96,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   void _aplicarFiltros() {
-    // Aquí implementas la lógica de filtrado
-    // Por ahora solo mostramos un mensaje
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Filtro aplicado: $_selectedFilter'),
@@ -138,7 +136,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
         backgroundColor: Colors.white.withOpacity(0.8),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.person, color: Color(0xFF111418)),
+          icon: const Icon(
+            Icons.arrow_back,
+            color: Color(0xFF111418),
+          ), // Cambiado a arrow_back para mejor UX
           onPressed: () {
             Navigator.pop(context);
           },
@@ -163,199 +164,215 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
         ],
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          child: Column(
-            children: [
-              // Resumen
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFF0F2F4)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: Column(
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+              child: SingleChildScrollView(
+                child: Column(
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Total de movimientos',
-                          style: TextStyle(
-                            color: Color(0xFF617589),
-                            fontSize: 14,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${_paginacion?['total'] ?? 0}',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: primaryColor,
-                          ),
-                        ),
-                      ],
-                    ),
+                    // Resumen
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: primaryColor.withOpacity(0.1),
+                        color: Colors.white,
                         borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFF0F2F4)),
                       ),
-                      child: Icon(
-                        Icons.history,
-                        color: primaryColor,
-                        size: 32,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Total de movimientos',
+                                style: TextStyle(
+                                  color: Color(0xFF617589),
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${_paginacion?['total'] ?? 0}',
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: primaryColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: primaryColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Icons.history,
+                              color: primaryColor,
+                              size: 32,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+
+                    const SizedBox(height: 24),
+
+                    // 🔍 INPUT DE BÚSQUEDA INTEGRADO
+                    const SearchFilter(),
+
+                    const SizedBox(height: 16),
+
+                    // Filtro activo
+                    if (_selectedFilter != 'Todos' || _fechaInicio != null)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.filter_list,
+                              size: 16,
+                              color: primaryColor,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Filtro activo: $_selectedFilter',
+                              style: TextStyle(
+                                color: primaryColor,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _selectedFilter = 'Todos';
+                                  _fechaInicio = null;
+                                  _fechaFin = null;
+                                });
+                                _aplicarFiltros();
+                              },
+                              child: Icon(
+                                Icons.close,
+                                size: 16,
+                                color: primaryColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    const SizedBox(height: 8),
+
+                    // Loading indicator
+                    if (_isLoading)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(20),
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    else if (_hasError)
+                      Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.error_outline,
+                                size: 48,
+                                color: Colors.red[300],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                _errorMessage,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: secondaryTextColor),
+                              ),
+                              const SizedBox(height: 12),
+                              ElevatedButton(
+                                onPressed: _cargarDatos,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: primaryColor,
+                                ),
+                                child: const Text('Reintentar'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else if (_movimientos.isEmpty)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(20),
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.history,
+                                size: 64,
+                                color: Color(0xFF617589),
+                              ),
+                              SizedBox(height: 16),
+                              Text(
+                                'No hay movimientos registrados',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Color(0xFF617589),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else
+                      // History List
+                      ListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _movimientos.length,
+                        itemBuilder: (context, index) {
+                          final movimiento = _movimientos[index];
+                          return _buildHistoryItem(
+                            movimiento: movimiento,
+                            primaryColor: primaryColor,
+                            secondaryTextColor: secondaryTextColor,
+                          );
+                        },
+                      ),
                   ],
                 ),
               ),
-
-              const SizedBox(height: 24),
-
-              // Filtro activo
-              if (_selectedFilter != 'Todos' || _fechaInicio != null)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: primaryColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.filter_list, size: 16, color: primaryColor),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Filtro activo: $_selectedFilter',
-                        style: TextStyle(
-                          color: primaryColor,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _selectedFilter = 'Todos';
-                            _fechaInicio = null;
-                            _fechaFin = null;
-                          });
-                          _aplicarFiltros();
-                        },
-                        child: Icon(Icons.close, size: 16, color: primaryColor),
-                      ),
-                    ],
-                  ),
-                ),
-
-              const SizedBox(height: 8),
-
-              // Loading indicator
-              if (_isLoading)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(20),
-                    child: CircularProgressIndicator(),
-                  ),
-                )
-              else if (_hasError)
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.error_outline,
-                          size: 48,
-                          color: Colors.red[300],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _errorMessage,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: secondaryTextColor),
-                        ),
-                        const SizedBox(height: 12),
-                        ElevatedButton(
-                          onPressed: _cargarDatos,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: primaryColor,
-                          ),
-                          child: const Text('Reintentar'),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              else if (_movimientos.isEmpty)
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.history,
-                          size: 64,
-                          color: secondaryTextColor.withOpacity(0.5),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No hay movimientos registrados',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: secondaryTextColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              else
-                // History List
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: _movimientos.length,
-                    itemBuilder: (context, index) {
-                      final movimiento = _movimientos[index];
-                      return _buildHistoryItem(
-                        movimiento: movimiento,
-                        primaryColor: primaryColor,
-                        secondaryTextColor: secondaryTextColor,
-                      );
-                    },
-                  ),
-                ),
-
-              const SizedBox(height: 16),
-
-              // Paginación info
-
-              // Navigation Footer
-              NavigationFooter(
-                currentIndex: 1,
-                onItemTapped: (index) {
-                  if (index == 0) {
-                    Navigator.pop(context);
-                  }
-                },
-                primaryColor: primaryColor,
-                secondaryTextColor: secondaryTextColor,
-              ),
-
-            ],
+            ),
           ),
-        ),
+
+          // Navigation Footer - AHORA FUERA DEL PADDING Y EXPANDED
+          NavigationFooter(
+            currentIndex: 1,
+            onItemTapped: (index) {
+              if (index == 0) {
+                Navigator.pop(context);
+              }
+            },
+            primaryColor: primaryColor,
+            secondaryTextColor: secondaryTextColor,
+          ),
+
+          const SizedBox(height: 8), // Pequeño espacio al final
+        ],
       ),
     );
   }
@@ -384,13 +401,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            // Navegar a la nueva vista de detalles
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => DetailPersonScreen(
-                  movimiento: movimiento,
-                ),
+                builder: (context) =>
+                    DetailPersonScreen(movimiento: movimiento),
               ),
             );
           },
@@ -515,11 +530,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     if (tieneImagen)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: Icon(
-                          Icons.image,
-                          size: 14,
-                          color: primaryColor,
-                        ),
+                        child: Icon(Icons.image, size: 14, color: primaryColor),
                       ),
                     const SizedBox(height: 4),
                     Icon(
@@ -536,6 +547,5 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ),
     );
   }
-
-
 }
+

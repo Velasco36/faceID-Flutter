@@ -7,7 +7,15 @@ class ApiService {
   // Si pruebas en emulador Android usa: http://10.0.2.2:5000
   // Si pruebas en dispositivo físico usa: http://TU_IP_LOCAL:5000
   // Ejemplo: http://192.168.1.100:5000
-  static const String baseUrl = 'http://192.168.1.180:5000';
+  // =======================================================================
+  // =======================================================================
+  // local
+  static const String baseUrl = 'http://localhost:5000';
+  // =======================================================================
+  // =======================================================================
+
+  // server
+  // static const String baseUrl = 'https://back-face-id--migue16velasco.replit.app';
 
 
 
@@ -150,6 +158,55 @@ class ApiService {
       return {'exito': false, 'error': 'Error: ${e.toString()}'};
     }
   }
+
+    Future<Map<String, dynamic>> movimientosPorPersona({
+    String? cedula,
+    String? nombre,
+  }) async {
+    if ((cedula == null || cedula.isEmpty) &&
+        (nombre == null || nombre.isEmpty)) {
+      return {'exito': false, 'error': 'Se requiere cédula o nombre'};
+    }
+
+    try {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/movimientos/persona'),
+      );
+
+      if (cedula != null && cedula.isNotEmpty) {
+        request.fields['cedula'] = cedula;
+      } else if (nombre != null && nombre.isNotEmpty) {
+        request.fields['nombre'] = nombre;
+      }
+
+      final streamedResponse =
+          await request.send().timeout(const Duration(seconds: 10));
+      final response = await http.Response.fromStream(streamedResponse);
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'exito': true, 'data': data};
+      } else if (response.statusCode == 300) {
+        // Múltiples resultados encontrados
+        return {
+          'exito': false,
+          'multiples': true,
+          'data': data,
+        };
+      } else {
+        return {
+          'exito': false,
+          'error': data['error'] ?? 'Error al obtener movimientos',
+        };
+      }
+    } on SocketException {
+      return {'exito': false, 'error': 'No se pudo conectar al servidor.'};
+    } on Exception catch (e) {
+      return {'exito': false, 'error': 'Error: ${e.toString()}'};
+    }
+  }
+
 
     // ─────────────────────────────────────────
   // OBTENER ESTADÍSTICAS DE MOVIMIENTOS

@@ -1,8 +1,8 @@
-// home_screen.dart (actualizado)
+// home_screen.dart
 import 'package:flutter/material.dart';
 import 'register_screen.dart';
 import 'verification_screen.dart';
-import 'history_screen.dart'; // Importar la nueva pantalla
+import 'history_screen.dart';
 import 'navigation_footer.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -39,12 +39,12 @@ class HomeScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 2),
-          child: Column(
-            children: [
-              Expanded(
+      body: Column(
+        children: [
+          Expanded(
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 2),
                 child: SingleChildScrollView(
                   child: Column(
                     children: [
@@ -303,27 +303,28 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
               ),
-
-              // Navigation Footer Component
-              NavigationFooter(
-                currentIndex: 0,
-                onItemTapped: (index) {
-                  if (index == 1) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const HistoryScreen(),
-                      ),
-                    );
-                  }
-                },
-                primaryColor: primaryColor,
-                secondaryTextColor: secondaryTextColor,
-              ),
-
-            ],
+            ),
           ),
-        ),
+
+          // Navigation Footer - AHORA FUERA DEL EXPANDED
+          NavigationFooter(
+            currentIndex: 0,
+            onItemTapped: (index) {
+              if (index == 1) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const HistoryScreen(),
+                  ),
+                );
+              }
+            },
+            primaryColor: primaryColor,
+            secondaryTextColor: secondaryTextColor,
+          ),
+
+          const SizedBox(height: 8), // Pequeño espacio al final
+        ],
       ),
     );
   }
@@ -356,6 +357,7 @@ class _AnimatedPulseState extends State<AnimatedPulse>
 
   @override
   void dispose() {
+    _controller.stop(); // ← detiene antes de dispose para evitar callbacks tardíos
     _controller.dispose();
     super.dispose();
   }
@@ -381,6 +383,4 @@ class _AnimatedPulseState extends State<AnimatedPulse>
       ),
     );
   }
-
-
 }

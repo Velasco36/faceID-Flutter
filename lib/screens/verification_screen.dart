@@ -13,12 +13,14 @@ class VerifyScreen extends StatefulWidget {
   State<VerifyScreen> createState() => _VerifyScreenState();
 }
 
-class _VerifyScreenState extends State<VerifyScreen> {
+class _VerifyScreenState extends State<VerifyScreen>
+    with WidgetsBindingObserver {
   CameraController? _controller;
   bool _isCameraInitialized = false;
   bool _processingFrame = false;
   bool _verificando = false;
   bool _faceDetected = false;
+  bool _streamActivo = false;
   String? _nombreReconocido;
   String? _errorMensaje;
   XFile? _fotoCapturada;
@@ -29,7 +31,23 @@ class _VerifyScreenState extends State<VerifyScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeCamera();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      await _detenerStream();
+      await _controller!.dispose();
+      _controller = null;
+      if (mounted) setState(() => _isCameraInitialized = false);
+    } else if (state == AppLifecycleState.resumed) {
+      await _initializeCamera();
+    }
   }
 
   Future<void> _initializeCamera() async {
@@ -42,37 +60,62 @@ class _VerifyScreenState extends State<VerifyScreen> {
       );
 
       await _controller!.initialize();
-      if (mounted) setState(() => _isCameraInitialized = true);
-      _startImageStream();
+      if (!mounted) return;
+      setState(() => _isCameraInitialized = true);
+      _iniciarStream();
     } catch (e) {
       print('Error inicializando cámara: $e');
     }
   }
 
-  void _startImageStream() {
-    _controller?.startImageStream((CameraImage image) async {
+  void _iniciarStream() {
+    if (_streamActivo) return;
+    if (_controller == null || !_controller!.value.isInitialized) return;
+
+    _streamActivo = true;
+    _controller!.startImageStream((CameraImage image) async {
       if (_processingFrame || _verificando || _faceDetected) return;
       _processingFrame = true;
 
+      bool detected = false;
       try {
-        final detected = await _faceDetector.detectFaceFromCameraImage(image);
-        if (detected && !_faceDetected && !_verificando) {
-          _faceDetected = true;
-          if (mounted) setState(() {});
-          await _stopStreamAndVerify();
-        }
+        detected = await _faceDetector.detectFaceFromCameraImage(image);
       } catch (e) {
-        print('Error en stream: $e');
+        print('Error en detección: $e');
       } finally {
-        _processingFrame = false;
+        if (!detected) {
+          _processingFrame = false;
+        }
+      }
+
+      if (detected && mounted) {
+        _faceDetected = true;
+        setState(() {});
+        await _stopStreamAndVerify();
       }
     });
   }
 
+  Future<void> _detenerStream() async {
+    if (!_streamActivo) return;
+    _streamActivo = false;
+    try {
+      if (_controller != null &&
+          _controller!.value.isInitialized &&
+          _controller!.value.isStreamingImages) {
+        await _controller!.stopImageStream();
+      }
+    } catch (e) {
+      print('Error deteniendo stream: $e');
+    }
+  }
+
   Future<void> _stopStreamAndVerify() async {
     try {
-      await _controller?.stopImageStream();
-      await Future.delayed(const Duration(milliseconds: 200));
+      await _detenerStream();
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      if (!mounted) return;
 
       final picture = await _controller?.takePicture();
       if (picture == null) {
@@ -80,13 +123,11 @@ class _VerifyScreenState extends State<VerifyScreen> {
         return;
       }
 
-      if (mounted) {
-        setState(() {
-          _fotoCapturada = picture;
-          _verificando = true;
-          _errorMensaje = null;
-        });
-      }
+      setState(() {
+        _fotoCapturada = picture;
+        _verificando = true;
+        _errorMensaje = null;
+      });
 
       final respuesta = await _apiService.verificarIdentidad(
         imagenPath: picture.path,
@@ -138,23 +179,23 @@ class _VerifyScreenState extends State<VerifyScreen> {
       _fotoCapturada = null;
       _processingFrame = false;
     });
-    _startImageStream();
+    _iniciarStream();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _detenerStream();
     _controller?.dispose();
     _faceDetector.dispose();
     super.dispose();
   }
 
-  // ── Construye el fondo de cámara con aspect ratio correcto ──
   Widget _buildCameraBackground() {
     if (_fotoCapturada != null) {
       return Image.file(File(_fotoCapturada!.path), fit: BoxFit.cover);
     }
 
-    // Corrección de aspect ratio: llena la pantalla sin distorsión
     return OverflowBox(
       alignment: Alignment.center,
       child: FittedBox(
@@ -176,42 +217,31 @@ class _VerifyScreenState extends State<VerifyScreen> {
           ? Stack(
               fit: StackFit.expand,
               children: [
-                // ── Fondo: cámara sin distorsión ──
                 _buildCameraBackground(),
-
-                // ── Marco ovalado ──
                 _buildMarcoDeteccion(),
-
-                // ── Texto superior ──
                 _buildTextoSuperior(),
-
-                // ── Loading overlay ──
                 if (_verificando) _buildLoadingOverlay(),
-
-                // ── Resultado exitoso ──
                 if (_nombreReconocido != null && !_verificando)
                   _buildResultadoExito(),
-
-                // ── Resultado error ──
                 if (_errorMensaje != null && !_verificando)
                   _buildResultadoError(),
-
-                // ── Botón volver ──
                 Positioned(
                   top: 48,
                   left: 16,
                   child: SafeArea(
                     child: IconButton(
-                      icon: const Icon(Icons.arrow_back_ios,
-                          color: Colors.white, size: 28),
+                      icon: const Icon(
+                        Icons.arrow_back_ios,
+                        color: Colors.white,
+                        size: 28,
+                      ),
                       onPressed: () => Navigator.pop(context),
                     ),
                   ),
                 ),
               ],
             )
-          : const Center(
-              child: CircularProgressIndicator(color: Colors.white)),
+          : const Center(child: CircularProgressIndicator(color: Colors.white)),
     );
   }
 
@@ -279,13 +309,16 @@ class _VerifyScreenState extends State<VerifyScreen> {
             Text(
               'Verificando identidad...',
               style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w500),
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+              ),
             ),
             SizedBox(height: 8),
-            Text('Por favor espera',
-                style: TextStyle(color: Colors.white60, fontSize: 14)),
+            Text(
+              'Por favor espera',
+              style: TextStyle(color: Colors.white60, fontSize: 14),
+            ),
           ],
         ),
       ),
@@ -309,14 +342,17 @@ class _VerifyScreenState extends State<VerifyScreen> {
           children: [
             const Icon(Icons.verified_user, color: Colors.white, size: 40),
             const SizedBox(height: 10),
-            const Text('Bienvenido',
-                style: TextStyle(color: Colors.white70, fontSize: 14)),
+            const Text(
+              'Bienvenido',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
             Text(
               _nombreReconocido!,
               style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold),
+                color: Colors.white,
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -345,20 +381,26 @@ class _VerifyScreenState extends State<VerifyScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(esNoReconocido ? Icons.person_off : Icons.wifi_off,
-                color: Colors.white, size: 40),
+            Icon(
+              esNoReconocido ? Icons.person_off : Icons.wifi_off,
+              color: Colors.white,
+              size: 40,
+            ),
             const SizedBox(height: 10),
             Text(
               _errorMensaje!,
               style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold),
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 4),
-            const Text('Reintentando...',
-                style: TextStyle(color: Colors.white60, fontSize: 13)),
+            const Text(
+              'Reintentando...',
+              style: TextStyle(color: Colors.white60, fontSize: 13),
+            ),
           ],
         ),
       ),
