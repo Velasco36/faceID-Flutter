@@ -57,9 +57,9 @@ class _RegisterScreenState extends State<RegisterScreen>
 
     // Siempre envía "user" como rol
     final result = await _apiService.registro(
-      username: _usernameController.text.trim(),
+      username: _usernameController.text.trim().toUpperCase(),
       password: _passwordController.text,
-      rol: 'user', // 🔥 Siempre envía "user"
+      rol: 'user',
     );
 
     setState(() => _isLoading = false);
@@ -139,7 +139,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                     decoration: BoxDecoration(
                       color: Colors.white, // 🔥 Fondo blanco
                       borderRadius: BorderRadius.circular(20),
-                     
+
                     ),
                     padding: const EdgeInsets.all(28),
                     child: Form(
