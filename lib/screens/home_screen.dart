@@ -4,15 +4,186 @@ import 'register_screen.dart';
 import 'verification_screen.dart';
 import 'history_screen.dart';
 import 'navigation_footer.dart';
+import '../services/api_service.dart';
+import '../services/session_service.dart';
+import "./auth/login_screen.dart";
 
-class HomeScreen extends StatelessWidget {
+final ApiService _apiService = ApiService();
+
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  Map<String, dynamic>? _usuario;
+  String? _username;
+  bool? _esAdmin;
+  String? _rol;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarDatosUsuario();
+  }
+
+  Future<void> _cargarDatosUsuario() async {
+    print('🏠 [HomeScreen] Cargando datos de usuario...');
+
+    try {
+      final usuario = await SessionService.getUsuario();
+      print('📦 Datos de usuario desde SessionService: $usuario');
+
+      // También verificar el token
+      final token = await SessionService.getToken();
+      print('🔑 Token: ${token != null ? 'Presente (${token.substring(0, 20)}...)' : 'No encontrado'}');
+
+      setState(() {
+        _usuario = usuario;
+        _username = usuario?['username'];
+        _esAdmin = usuario?['es_admin'];
+        _rol = usuario?['rol'];
+        _isLoading = false;
+      });
+
+      print('✅ Usuario cargado:');
+      print('   - username: $_username');
+      print('   - es_admin: $_esAdmin');
+      print('   - rol: $_rol');
+
+    } catch (e) {
+      print('❌ Error cargando datos de usuario: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _logout() async {
+    print('🚪 [HomeScreen] Iniciando proceso de logout...');
+
+    try {
+      // Mostrar indicador de carga
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return const Center(
+            child: CircularProgressIndicator(
+              color: Colors.blue,
+              strokeWidth: 2.5,
+            ),
+          );
+        },
+      );
+
+      // Verificar datos antes del logout
+      print('📊 Datos antes del logout:');
+      final tokenBefore = await SessionService.getToken();
+      final usuarioBefore = await SessionService.getUsuario();
+      print('   Token antes: ${tokenBefore != null ? "Presente" : "No encontrado"}');
+      print('   Usuario antes: $usuarioBefore');
+
+      // Llamar al servicio de logout
+      print('📤 Llamando a API logout...');
+      final respuesta = await _apiService.logout();
+      print('📥 Respuesta del logout: $respuesta');
+
+      // Limpiar sesión local
+      print('🧹 Limpiando sesión local...');
+      await SessionService.clearSession();
+
+      // Verificar que se limpió
+      print('🔍 Verificando después del logout:');
+      final tokenAfter = await SessionService.getToken();
+      final usuarioAfter = await SessionService.getUsuario();
+      print('   Token después: ${tokenAfter ?? "null"}');
+      print('   Usuario después: ${usuarioAfter ?? "null"}');
+
+      // Cerrar el diálogo de carga
+      if (mounted) Navigator.pop(context);
+
+      // Verificar si el logout fue exitoso
+      if (respuesta['exito'] == true || respuesta['success'] == true) {
+        print('✅ Logout exitoso, redirigiendo a login...');
+
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const LoginScreen()),
+            (route) => false,
+          );
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Sesión cerrada exitosamente'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        print('⚠️ Logout retornó error pero sesión local limpiada');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                respuesta['mensaje'] ??
+                respuesta['message'] ??
+                'Error al cerrar sesión',
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('❌ Error en logout: $e');
+
+      // Cerrar el diálogo de carga si está abierto
+      if (mounted) Navigator.pop(context);
+
+      // Aún así limpiar sesión local
+      print('🧹 Limpiando sesión local por error...');
+      await SessionService.clearSession();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+
+        // Redirigir a login aunque haya error
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          (route) => false,
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final primaryColor = const Color(0xFF137FEC);
     final backgroundColor = const Color(0xFFF6F7F8);
     final secondaryTextColor = const Color(0xFF617589);
+
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: backgroundColor,
+        body: Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: backgroundColor,
@@ -21,7 +192,12 @@ class HomeScreen extends StatelessWidget {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.menu, color: Color(0xFF111418)),
-          onPressed: () {},
+          onPressed: () {
+            print('📋 Mostrando datos de usuario:');
+            print('   Username: $_username');
+            print('   Es Admin: $_esAdmin');
+            print('   Rol: $_rol');
+          },
         ),
         title: const Text(
           'Reconocimiento Facial',
@@ -34,8 +210,8 @@ class HomeScreen extends StatelessWidget {
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications, color: Color(0xFF111418)),
-            onPressed: () {},
+            icon: const Icon(Icons.logout, color: Color(0xFF111418)),
+            onPressed: _logout,
           ),
         ],
       ),
@@ -81,15 +257,11 @@ class HomeScreen extends StatelessWidget {
                                         height: 192,
                                         decoration: BoxDecoration(
                                           border: Border.all(
-                                            color: primaryColor.withOpacity(
-                                              0.3,
-                                            ),
+                                            color: primaryColor.withOpacity(0.3),
                                             width: 2,
                                             style: BorderStyle.solid,
                                           ),
-                                          borderRadius: BorderRadius.circular(
-                                            24,
-                                          ),
+                                          borderRadius: BorderRadius.circular(24),
                                         ),
                                         child: const AnimatedPulse(),
                                       ),
@@ -121,29 +293,42 @@ class HomeScreen extends StatelessWidget {
                               ],
                             ),
                             const SizedBox(height: 18),
-                            const Text(
-                              'Bienvenido',
-                              style: TextStyle(
+                            Text(
+                              'Bienvenido${_username != null ? " $_username" : ""}',
+                              style: const TextStyle(
                                 fontSize: 24,
                                 fontWeight: FontWeight.bold,
                                 color: Color(0xFF111418),
                               ),
                             ),
-                            const SizedBox(height: 8),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                              ),
-                              child: Text(
-                                'Seleccione una opción para comenzar el proceso de identificación.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: secondaryTextColor,
-                                  height: 1.5,
+                            if (_esAdmin != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: _esAdmin!
+                                      ? Colors.blue.withOpacity(0.2)
+                                      : Colors.grey.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    _esAdmin! ? 'Administrador' : 'Usuario',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: _esAdmin!
+                                        ? Colors.blue[800]
+                                        : Colors.grey[600],
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
+                            const SizedBox(height: 8),
+
                           ],
                         ),
                       ),
@@ -152,69 +337,77 @@ class HomeScreen extends StatelessWidget {
                       Column(
                         children: [
                           // Register Button
-                          Material(
-                            color: primaryColor,
-                            borderRadius: BorderRadius.circular(12),
-                            child: InkWell(
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        const RegisterScreen(),
-                                  ),
-                                );
-                              },
+                         // Register Button - Solo visible para administradores
+                          if (_esAdmin == true) ...[
+                            Material(
+                              color: primaryColor,
                               borderRadius: BorderRadius.circular(12),
-                              child: Container(
-                                padding: const EdgeInsets.all(20),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withOpacity(0.2),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Icon(
-                                        Icons.person_add,
-                                        color: Colors.white,
-                                        size: 28,
-                                      ),
+                              child: InkWell(
+                                onTap: () {
+                                  print(
+                                    '📝 Navegando a RegisterScreen (Admin: $_esAdmin)',
+                                  );
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) =>
+                                          const RegisterScreen(),
                                     ),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: const [
-                                          Text(
-                                            'Registrar Persona',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.bold,
-                                            ),
+                                  );
+                                },
+                                borderRadius: BorderRadius.circular(12),
+                                child: Container(
+                                  padding: const EdgeInsets.all(20),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.2),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
                                           ),
-                                          SizedBox(height: 4),
-                                          Text(
-                                            'Crear nuevo perfil biométrico',
-                                            style: TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ],
+                                        ),
+                                        child: const Icon(
+                                          Icons.person_add,
+                                          color: Colors.white,
+                                          size: 28,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: const [
+                                            Text(
+                                              'Registrar Persona',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            SizedBox(height: 4),
+                                            Text(
+                                              'Crear nuevo perfil biométrico',
+                                              style: TextStyle(
+                                                color: Colors.white70,
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
+                            const SizedBox(height: 16), // Espaciado condicional
+                          ],
 
-                          const SizedBox(height: 16),
 
                           // Verify Button
                           Container(
@@ -238,11 +431,11 @@ class HomeScreen extends StatelessWidget {
                               borderRadius: BorderRadius.circular(12),
                               child: InkWell(
                                 onTap: () {
+                                  print('🔍 Navegando a VerifyScreen');
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) =>
-                                          const VerifyScreen(),
+                                      builder: (context) => const VerifyScreen(),
                                     ),
                                   );
                                 },
@@ -255,9 +448,7 @@ class HomeScreen extends StatelessWidget {
                                         padding: const EdgeInsets.all(12),
                                         decoration: BoxDecoration(
                                           color: primaryColor.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
+                                          borderRadius: BorderRadius.circular(8),
                                         ),
                                         child: Icon(
                                           Icons.photo_camera,
@@ -268,8 +459,7 @@ class HomeScreen extends StatelessWidget {
                                       const SizedBox(width: 16),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
+                                          crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             const Text(
                                               'Verificar Persona',
@@ -306,24 +496,29 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
 
-          // Navigation Footer - AHORA FUERA DEL EXPANDED
-          NavigationFooter(
-            currentIndex: 0,
-            onItemTapped: (index) {
-              if (index == 1) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const HistoryScreen(),
-                  ),
-                );
-              }
-            },
-            primaryColor: primaryColor,
-            secondaryTextColor: secondaryTextColor,
-          ),
-
-          const SizedBox(height: 8), // Pequeño espacio al final
+        // Navigation Footer - Versión condicional
+       // Navigation Footer - Solo visible para administradores
+          if (_esAdmin == true) ...[
+            NavigationFooter(
+              currentIndex: 0,
+              onItemTapped: (index) {
+                if (index == 1) {
+                  print('📋 Admin accediendo a HistoryScreen');
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const HistoryScreen(),
+                    ),
+                  );
+                }
+              },
+              primaryColor: primaryColor,
+              secondaryTextColor: secondaryTextColor,
+            ),
+            const SizedBox(height: 8),
+          ],
+          // Sin else - no se muestra nada para usuarios no admin
+          const SizedBox(height: 8),
         ],
       ),
     );
@@ -349,6 +544,7 @@ class _AnimatedPulseState extends State<AnimatedPulse>
       duration: const Duration(seconds: 2),
       vsync: this,
     )..repeat(reverse: true);
+
     _animation = Tween<double>(
       begin: 1.0,
       end: 1.1,
@@ -357,7 +553,7 @@ class _AnimatedPulseState extends State<AnimatedPulse>
 
   @override
   void dispose() {
-    _controller.stop(); // ← detiene antes de dispose para evitar callbacks tardíos
+    _controller.stop();
     _controller.dispose();
     super.dispose();
   }

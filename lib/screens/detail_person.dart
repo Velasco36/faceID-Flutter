@@ -9,7 +9,7 @@ class DetailPersonScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isEntrada = movimiento['tipo'] == 'entrada';
-    final tieneImagen = movimiento['imagen_path'] != null;
+    final tieneImagen = movimiento['imagen_url'] != null;
     final confianza = movimiento['confianza_verificacion'];
     final primaryColor = const Color(0xFF137FEC);
 
@@ -229,7 +229,7 @@ class DetailPersonScreen extends StatelessWidget {
                           color: const Color(0xFFF6F7F8),
                           borderRadius: BorderRadius.circular(12),
                           image: DecorationImage(
-                            image: NetworkImage(movimiento['imagen_path']),
+                            image: NetworkImage(movimiento['imagen_url']),
                             fit: BoxFit.cover,
                           ),
                         ),
@@ -238,7 +238,7 @@ class DetailPersonScreen extends StatelessWidget {
                     const SizedBox(height: 8),
                     Center(
                       child: Text(
-                        movimiento['imagen_path'].split('/').last,
+                        movimiento['imagen_url'].split('/').last,
                         style: const TextStyle(
                           fontSize: 10,
                           color: Color(0xFF617589),

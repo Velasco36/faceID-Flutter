@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../services/session_service.dart';
 
 class ApiService {
   // ⚠️ Cambia esta IP por la IP de tu PC donde corre Flask
@@ -10,7 +11,8 @@ class ApiService {
   // =======================================================================
   // =======================================================================
   // local
-  static const String baseUrl = 'http://localhost:5000';
+  // local
+  static const String baseUrl = 'http://192.168.1.207:5000';
   // =======================================================================
   // =======================================================================
 
@@ -248,4 +250,139 @@ class ApiService {
       return false;
     }
   }
+
+    // ─────────────────────────────────────────
+  // REGISTRO DE USUARIO
+  // ─────────────────────────────────────────
+  Future<Map<String, dynamic>> registro({
+    required String username,
+    required String password,
+    String rol = 'user',
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/auth/registro');
+      final request = http.MultipartRequest('POST', uri);
+
+      request.fields['username'] = username;
+      request.fields['password'] = password;
+      request.fields['rol'] = rol;
+
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 30),
+      );
+      final response = await http.Response.fromStream(streamedResponse);
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'exito': true, 'data': data};
+      } else {
+        return {
+          'exito': false,
+          'error': data['error'] ?? data['message'] ?? 'Error en registro',
+        };
+      }
+    } on SocketException {
+      return {'exito': false, 'error': 'No se pudo conectar al servidor.'};
+    } on Exception catch (e) {
+      return {'exito': false, 'error': 'Error: ${e.toString()}'};
+    }
+  }
+
+
+  // ─────────────────────────────────────────
+  // LOGIN DE USUARIO
+  // ─────────────────────────────────────────
+  Future<Map<String, dynamic>> login({
+    required String username,
+    required String password,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/auth/login');
+      final request = http.MultipartRequest('POST', uri);
+
+      request.fields['username'] = username;
+      request.fields['password'] = password;
+
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 30),
+      );
+      final response = await http.Response.fromStream(streamedResponse);
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'exito': true, 'data': data};
+      } else {
+        return {
+          'exito': false,
+          'error':
+              data['error'] ?? data['message'] ?? 'Credenciales incorrectas',
+        };
+      }
+    } on SocketException {
+      return {'exito': false, 'error': 'No se pudo conectar al servidor.'};
+    } on Exception catch (e) {
+      return {'exito': false, 'error': 'Error: ${e.toString()}'};
+    }
+  }
+
+
+  // ──────────────────────────────────────t───
+  // Logout DE USUARIO
+  // ─────────────────────────────────────────
+Future<Map<String, dynamic>> logout() async {
+    try {
+      // Obtener el token almacenado
+      final token = await SessionService.getToken();
+
+      print('📤 Enviando logout con token: ${token != null ? 'Token presente (${token.substring(0, 20)}...)' : 'Token NO encontrado'}');
+
+      if (token == null) {
+        print('❌ No hay token disponible para logout');
+        return {
+          'exito': false,
+          'error': 'No hay sesión activa',
+        };
+      }
+
+      final uri = Uri.parse('$baseUrl/auth/logout');
+
+      // Crear request con headers
+      final request = http.MultipartRequest('POST', uri)
+        ..headers.addAll({
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        });
+
+      print('📡 URL: $uri');
+      print('🔑 Header Authorization: Bearer ${token.substring(0, 20)}...');
+
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 30),
+      );
+
+      final response = await http.Response.fromStream(streamedResponse);
+      final data = jsonDecode(response.body);
+
+      print('📥 Respuesta logout - Status: ${response.statusCode}');
+      print('📥 Respuesta logout - Body: $data');
+
+      if (response.statusCode == 200) {
+        return {'exito': true, 'data': data};
+      } else {
+        return {
+          'exito': false,
+          'error': data['error'] ?? data['message'] ?? 'Error al cerrar sesión',
+        };
+      }
+    } on SocketException {
+      print('❌ Error de conexión: No se pudo conectar al servidor');
+      return {'exito': false, 'error': 'No se pudo conectar al servidor.'};
+    } on Exception catch (e) {
+      print('❌ Error: ${e.toString()}');
+      return {'exito': false, 'error': 'Error: ${e.toString()}'};
+    }
+  }
+
 }
+
+

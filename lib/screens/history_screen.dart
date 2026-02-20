@@ -283,7 +283,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       const Center(
                         child: Padding(
                           padding: EdgeInsets.all(20),
-                          child: CircularProgressIndicator(),
+                           child: CircularProgressIndicator(
+                            color: Colors.blue,
+                            strokeWidth: 2.5,
+                          ),
                         ),
                       )
                     else if (_hasError)
