@@ -1,14 +1,15 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
-import 'package:lottie/lottie.dart';
+
 import 'screens/home_screen.dart';
+import 'screens/verification_screen.dart';
 import 'screens/company/session_company.dart';
 import 'screens/brances/branches_screen.dart';
+import 'screens/animate/FaceScanAnimation.dart';
 import 'screens/auth/register_user_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
-
 
 List<CameraDescription> cameras = [];
 
@@ -34,6 +35,7 @@ Future<void> main() async {
 
   runApp(const MyApp());
 }
+
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -69,32 +71,26 @@ class _SplashScreenState extends State<SplashScreen> {
 
     // Remueve splash nativo apenas Flutter esté listo
     FlutterNativeSplash.remove();
+  }
 
-    // Espera duración de la animación
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const SessionCompany()),
-        );
-      }
-    });
+  void _navigateToNext() {
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const RegisterScreen()),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Center(
-        child: Lottie.asset(
-          'assets/animations/face_scan.json',
-          width: size.width * 0.7,
-          height: size.width * 0.7,
-          fit: BoxFit.contain,
-          repeat: true,
-        ),
+      body: SimpleFaceScanAnimation(
+        size: 0.7,
+        repeat: false,
+        onFinish: _navigateToNext,
+        duration: const Duration(seconds: 3),
       ),
     );
   }

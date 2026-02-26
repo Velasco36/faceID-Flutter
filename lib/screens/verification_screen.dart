@@ -25,8 +25,22 @@ class _VerifyScreenState extends State<VerifyScreen>
   String? _errorMensaje;
   XFile? _fotoCapturada;
 
+  // Control de detecciones consecutivas
+  int _consecutiveDetections = 0;
+  int _consecutiveNoDetections = 0;
+  static const int _requiredDetections = 3;
+  static const int _requiredNoDetections = 3;
+
+  // Control de cámara
+  int _cameraIndex = 0;
+  bool _isBackCamera = true;
+
   final FaceDetectorService _faceDetector = FaceDetectorService();
   final ApiService _apiService = ApiService();
+
+  bool _isDisposed = false;
+  bool _isInitializing = false;
+  bool _isPaused = false;
 
   @override
   void initState() {
@@ -37,63 +51,176 @@ class _VerifyScreenState extends State<VerifyScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
+    if (_isDisposed) return;
 
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused) {
+    print('Lifecycle state changed to: $state');
+
+    if (state == AppLifecycleState.paused) {
+      _isPaused = true;
       await _detenerStream();
-      await _controller!.dispose();
+      await _controller?.dispose();
       _controller = null;
-      if (mounted) setState(() => _isCameraInitialized = false);
+      if (mounted) {
+        setState(() {
+          _isCameraInitialized = false;
+          _streamActivo = false;
+        });
+      }
     } else if (state == AppLifecycleState.resumed) {
-      await _initializeCamera();
+      _isPaused = false;
+      if (mounted && !_isDisposed) {
+        // Pequeña pausa para asegurar que todo está listo
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted && !_isDisposed && !_isPaused) {
+          await _initializeCamera();
+        }
+      }
     }
   }
 
   Future<void> _initializeCamera() async {
+    if (_isDisposed || _isInitializing || _isPaused) return;
+
+    _isInitializing = true;
+
     try {
+      await _controller?.dispose();
+
+      if (_cameraIndex >= cameras.length) {
+        _cameraIndex = 0;
+      }
+
+      print(
+        'Inicializando cámara: ${_cameraIndex == 0 ? "Trasera" : "Frontal"}',
+      );
+
       _controller = CameraController(
-        cameras[1],
-        ResolutionPreset.medium,
+        cameras[_cameraIndex],
+        ResolutionPreset.high, // Cambiado a high para mejor calidad
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.nv21,
       );
 
       await _controller!.initialize();
-      if (!mounted) return;
-      setState(() => _isCameraInitialized = true);
-      _iniciarStream();
+
+      if (!mounted || _isDisposed || _isPaused) {
+        _isInitializing = false;
+        return;
+      }
+
+      setState(() {
+        _isCameraInitialized = true;
+      });
+
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      if (mounted && !_isDisposed && !_isPaused) {
+        _iniciarStream();
+      }
     } catch (e) {
       print('Error inicializando cámara: $e');
+      if (mounted && !_isDisposed && !_isPaused) {
+        setState(() {
+          _isCameraInitialized = false;
+        });
+      }
+    } finally {
+      _isInitializing = false;
     }
   }
 
+  Future<void> _cambiarCamara() async {
+    if (cameras.length < 2 || _isDisposed || _isPaused) {
+      return;
+    }
+
+    setState(() {
+      _isCameraInitialized = false;
+      _processingFrame = false;
+      _faceDetected = false;
+      _consecutiveDetections = 0;
+      _consecutiveNoDetections = 0;
+      _verificando = false;
+      _nombreReconocido = null;
+      _errorMensaje = null;
+      _fotoCapturada = null;
+      _streamActivo = false;
+    });
+
+    await _detenerStream();
+    await _controller?.dispose();
+    _controller = null;
+
+    if (!mounted || _isDisposed || _isPaused) return;
+
+    setState(() {
+      _cameraIndex = _cameraIndex == 0 ? 1 : 0;
+      _isBackCamera = _cameraIndex == 0;
+    });
+
+    await _initializeCamera();
+  }
+
   void _iniciarStream() {
-    if (_streamActivo) return;
+    if (_streamActivo || _isDisposed || _isPaused) return;
     if (_controller == null || !_controller!.value.isInitialized) return;
 
     _streamActivo = true;
-    _controller!.startImageStream((CameraImage image) async {
-      if (_processingFrame || _verificando || _faceDetected) return;
-      _processingFrame = true;
+    print(
+      'Stream iniciado - Cámara: ${_cameraIndex == 0 ? "Trasera" : "Frontal"}',
+    );
 
-      bool detected = false;
-      try {
-        detected = await _faceDetector.detectFaceFromCameraImage(image);
-      } catch (e) {
-        print('Error en detección: $e');
-      } finally {
-        if (!detected) {
-          _processingFrame = false;
+    try {
+      _controller!.startImageStream((CameraImage image) async {
+        if (_processingFrame ||
+            _verificando ||
+            _faceDetected ||
+            _isDisposed ||
+            _isPaused ||
+            !mounted)
+          return;
+
+        _processingFrame = true;
+
+        bool detected = false;
+        try {
+          detected = await _faceDetector.detectFaceFromCameraImage(
+            image,
+            cameras[_cameraIndex],
+          );
+        } catch (e) {
+          print('Error en detección: $e');
         }
-      }
 
-      if (detected && mounted) {
-        _faceDetected = true;
-        setState(() {});
-        await _stopStreamAndVerify();
-      }
-    });
+        if (detected) {
+          _consecutiveDetections++;
+          _consecutiveNoDetections = 0;
+
+          if (_consecutiveDetections >= _requiredDetections &&
+              mounted &&
+              !_isDisposed &&
+              !_isPaused) {
+            print('🎯 Rostro confirmado');
+            _faceDetected = true;
+            _consecutiveDetections = 0;
+            setState(() {});
+            await _stopStreamAndVerify();
+            _processingFrame = false;
+            return;
+          }
+        } else {
+          _consecutiveNoDetections++;
+          if (_consecutiveNoDetections >= _requiredNoDetections) {
+            _consecutiveDetections = 0;
+          }
+        }
+
+        _processingFrame = false;
+      });
+    } catch (e) {
+      print('Error iniciando stream: $e');
+      _streamActivo = false;
+    }
   }
 
   Future<void> _detenerStream() async {
@@ -113,9 +240,10 @@ class _VerifyScreenState extends State<VerifyScreen>
   Future<void> _stopStreamAndVerify() async {
     try {
       await _detenerStream();
-      await Future.delayed(const Duration(milliseconds: 300));
 
-      if (!mounted) return;
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      if (!mounted || _isDisposed || _isPaused) return;
 
       final picture = await _controller?.takePicture();
       if (picture == null) {
@@ -133,7 +261,7 @@ class _VerifyScreenState extends State<VerifyScreen>
         imagenPath: picture.path,
       );
 
-      if (!mounted) return;
+      if (!mounted || _isDisposed || _isPaused) return;
 
       if (respuesta['exito'] == true) {
         final data = respuesta['data'];
@@ -142,35 +270,51 @@ class _VerifyScreenState extends State<VerifyScreen>
             _verificando = false;
             _nombreReconocido = data['persona']['nombre'];
           });
-          Future.delayed(const Duration(seconds: 3), _reiniciarEscaneo);
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted && !_isDisposed) {
+              _reiniciarEscaneo();
+            }
+          });
         } else {
           setState(() {
             _verificando = false;
             _errorMensaje = 'Rostro no reconocido';
           });
-          Future.delayed(const Duration(seconds: 2), _reiniciarEscaneo);
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted && !_isDisposed) {
+              _reiniciarEscaneo();
+            }
+          });
         }
       } else {
         setState(() {
           _verificando = false;
           _errorMensaje = respuesta['error'] ?? 'Error al conectar';
         });
-        Future.delayed(const Duration(seconds: 3), _reiniciarEscaneo);
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted && !_isDisposed) {
+            _reiniciarEscaneo();
+          }
+        });
       }
     } catch (e) {
       print('Error en verificación: $e');
-      if (mounted) {
+      if (mounted && !_isDisposed && !_isPaused) {
         setState(() {
           _verificando = false;
           _errorMensaje = 'Error inesperado';
         });
-        Future.delayed(const Duration(seconds: 2), _reiniciarEscaneo);
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted && !_isDisposed) {
+            _reiniciarEscaneo();
+          }
+        });
       }
     }
   }
 
   void _reiniciarEscaneo() {
-    if (!mounted) return;
+    if (!mounted || _isDisposed || _isPaused) return;
     setState(() {
       _verificando = false;
       _faceDetected = false;
@@ -178,12 +322,15 @@ class _VerifyScreenState extends State<VerifyScreen>
       _errorMensaje = null;
       _fotoCapturada = null;
       _processingFrame = false;
+      _consecutiveDetections = 0;
+      _consecutiveNoDetections = 0;
     });
     _iniciarStream();
   }
 
   @override
   void dispose() {
+    _isDisposed = true;
     WidgetsBinding.instance.removeObserver(this);
     _detenerStream();
     _controller?.dispose();
@@ -191,62 +338,203 @@ class _VerifyScreenState extends State<VerifyScreen>
     super.dispose();
   }
 
+  // ============ MÉTODO CORREGIDO PARA LA CÁMARA ============
   Widget _buildCameraBackground() {
     if (_fotoCapturada != null) {
       return Image.file(File(_fotoCapturada!.path), fit: BoxFit.cover);
     }
 
-    return OverflowBox(
-      alignment: Alignment.center,
-      child: FittedBox(
-        fit: BoxFit.cover,
-        child: SizedBox(
-          width: _controller!.value.previewSize!.height,
-          height: _controller!.value.previewSize!.width,
+    if (_controller == null || !_controller!.value.isInitialized) {
+      return Container(color: Colors.black);
+    }
+
+    try {
+      // Obtener el tamaño de la pantalla
+      final size = MediaQuery.of(context).size;
+
+      // Calcular la escala para que la cámara ocupe toda la pantalla
+      // sin distorsionarse
+      final cameraAspectRatio = _controller!.value.aspectRatio;
+      final screenAspectRatio = size.aspectRatio;
+
+      // Calcular la escala basada en la relación de aspecto
+      double scale;
+      if (cameraAspectRatio > screenAspectRatio) {
+        // La cámara es más ancha que la pantalla, ajustar por altura
+        scale = size.height / (size.width / cameraAspectRatio);
+      } else {
+        // La cámara es más alta que la pantalla, ajustar por ancho
+        scale = size.width / (size.height * cameraAspectRatio);
+      }
+
+      return ClipRect(
+        child: OverflowBox(
+          alignment: Alignment.center,
+          child: FittedBox(
+            fit: BoxFit.fitHeight,
+            child: SizedBox(
+              width: size.width,
+              height: size.width * cameraAspectRatio,
+              child: CameraPreview(_controller!),
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      print('Error mostrando preview: $e');
+      return Container(color: Colors.black);
+    }
+  }
+
+  // Método alternativo más simple si el anterior no funciona bien
+  Widget _buildCameraBackgroundAlternativo() {
+    if (_fotoCapturada != null) {
+      return Image.file(File(_fotoCapturada!.path), fit: BoxFit.cover);
+    }
+
+    if (_controller == null || !_controller!.value.isInitialized) {
+      return Container(color: Colors.black);
+    }
+
+    try {
+      return Center(
+        child: AspectRatio(
+          aspectRatio: _controller!.value.aspectRatio,
           child: CameraPreview(_controller!),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      print('Error mostrando preview: $e');
+      return Container(color: Colors.black);
+    }
+  }
+  // ============ FIN DEL MÉTODO CORREGIDO ============
+
+  bool _mostrarBotonCamara() {
+    return !_verificando &&
+        _nombreReconocido == null &&
+        _errorMensaje == null &&
+        _fotoCapturada == null &&
+        _isCameraInitialized &&
+        !_isPaused &&
+        cameras.length > 1;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: _isCameraInitialized
-          ? Stack(
-              fit: StackFit.expand,
-              children: [
-                _buildCameraBackground(),
-                _buildMarcoDeteccion(),
-                _buildTextoSuperior(),
-                if (_verificando) _buildLoadingOverlay(),
-                if (_nombreReconocido != null && !_verificando)
-                  _buildResultadoExito(),
-                if (_errorMensaje != null && !_verificando)
-                  _buildResultadoError(),
-                Positioned(
-                  top: 48,
-                  left: 16,
-                  child: SafeArea(
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.arrow_back_ios,
-                        color: Colors.white,
-                        size: 28,
-                      ),
-                      onPressed: () => Navigator.pop(context),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Fondo negro
+          Container(color: Colors.black),
+
+          // Cámara - Usar el método corregido
+          if (_isCameraInitialized && !_isPaused) _buildCameraBackground(),
+
+          // Overlays
+          if (_verificando && !_isPaused) _buildLoadingOverlay(),
+          if (_nombreReconocido != null && !_verificando && !_isPaused)
+            _buildResultadoExito(),
+          if (_errorMensaje != null && !_verificando && !_isPaused)
+            _buildResultadoError(),
+
+          // Marco de detección
+          if (_isCameraInitialized &&
+              !_verificando &&
+              _fotoCapturada == null &&
+              !_isPaused)
+            _buildMarcoDeteccion(),
+
+          // Texto superior
+          if (_isCameraInitialized && !_isPaused) _buildTextoSuperior(),
+
+          // Botón de regresar
+          Positioned(
+            top: 48,
+            left: 16,
+            child: SafeArea(
+              child: IconButton(
+                icon: const Icon(
+                  Icons.arrow_back_ios,
+                  color: Colors.white,
+                  size: 28,
+                ),
+                onPressed: () {
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/home',
+                    (route) => false,
+                  );
+                },
+              ),
+            ),
+          ),
+
+          // Botón de cambio de cámara
+          if (_mostrarBotonCamara())
+            Positioned(
+              bottom: 48,
+              right: 16,
+              child: SafeArea(
+                child: GestureDetector(
+                  onTap: _cambiarCamara,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.black45,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white30, width: 1),
+                    ),
+                    child: const Icon(
+                      Icons.cameraswitch,
+                      color: Colors.white,
+                      size: 28,
                     ),
                   ),
                 ),
-              ],
-            )
-          : const Center(child: CircularProgressIndicator(color: Colors.white)),
+              ),
+            ),
+
+          // Mensaje de error de inicialización
+          if (!_isCameraInitialized && !_isInitializing && !_isPaused)
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text(
+                    'Error al iniciar cámara',
+                    style: TextStyle(color: Colors.white, fontSize: 18),
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    onPressed: _initializeCamera,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Reintentar'),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 
   Widget _buildMarcoDeteccion() {
-    final color = _faceDetected ? Colors.green : Colors.white54;
+    final progress = _consecutiveDetections / _requiredDetections;
+    Color color;
+    if (_consecutiveDetections == 0) {
+      color = Colors.white54;
+    } else if (progress < 0.6) {
+      color = Colors.yellowAccent;
+    } else {
+      color = Colors.greenAccent;
+    }
+
     return Center(
       child: Container(
         width: 220,
@@ -266,12 +554,13 @@ class _VerifyScreenState extends State<VerifyScreen>
     if (_verificando) {
       texto = 'Procesando...';
       color = Colors.white;
-    } else if (_faceDetected &&
-        _nombreReconocido == null &&
-        _errorMensaje == null) {
+    } else if (_faceDetected) {
       texto = 'Rostro detectado ✓';
       color = Colors.greenAccent;
-    } else if (_nombreReconocido != null || _errorMensaje != null) {
+    } else if (_consecutiveDetections > 0) {
+      texto = 'Mantén el rostro quieto...';
+      color = Colors.yellowAccent;
+    } else if (_errorMensaje != null) {
       texto = '';
       color = Colors.transparent;
     } else {
@@ -313,11 +602,6 @@ class _VerifyScreenState extends State<VerifyScreen>
                 fontSize: 18,
                 fontWeight: FontWeight.w500,
               ),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Por favor espera',
-              style: TextStyle(color: Colors.white60, fontSize: 14),
             ),
           ],
         ),

@@ -6,7 +6,8 @@ import 'history_screen.dart';
 import 'navigation_footer.dart';
 import '../services/api_service.dart';
 import '../services/session_service.dart';
-import "./auth/login_screen.dart";
+import './auth/login_screen.dart';
+import './animate/FaceScanAnimation.dart';
 
 final ApiService _apiService = ApiService();
 
@@ -39,7 +40,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
       // También verificar el token
       final token = await SessionService.getToken();
-      print('🔑 Token: ${token != null ? 'Presente (${token.substring(0, 20)}...)' : 'No encontrado'}');
+      print(
+        '🔑 Token: ${token != null ? 'Presente (${token.substring(0, 20)}...)' : 'No encontrado'}',
+      );
 
       setState(() {
         _usuario = usuario;
@@ -53,7 +56,6 @@ class _HomeScreenState extends State<HomeScreen> {
       print('   - username: $_username');
       print('   - es_admin: $_esAdmin');
       print('   - rol: $_rol');
-
     } catch (e) {
       print('❌ Error cargando datos de usuario: $e');
       setState(() {
@@ -85,7 +87,9 @@ class _HomeScreenState extends State<HomeScreen> {
       print('📊 Datos antes del logout:');
       final tokenBefore = await SessionService.getToken();
       final usuarioBefore = await SessionService.getUsuario();
-      print('   Token antes: ${tokenBefore != null ? "Presente" : "No encontrado"}');
+      print(
+        '   Token antes: ${tokenBefore != null ? "Presente" : "No encontrado"}',
+      );
       print('   Usuario antes: $usuarioBefore');
 
       // Llamar al servicio de logout
@@ -132,8 +136,8 @@ class _HomeScreenState extends State<HomeScreen> {
             SnackBar(
               content: Text(
                 respuesta['mensaje'] ??
-                respuesta['message'] ??
-                'Error al cerrar sesión',
+                    respuesta['message'] ??
+                    'Error al cerrar sesión',
               ),
               backgroundColor: Colors.red,
             ),
@@ -220,79 +224,27 @@ class _HomeScreenState extends State<HomeScreen> {
           Expanded(
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 2),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 2,
+                ),
                 child: SingleChildScrollView(
                   child: Column(
                     children: [
-                      // Hero Illustration Area
+                      // Hero Illustration Area - AHORA CON LA ANIMACIÓN REUTILIZABLE
                       Container(
                         width: double.infinity,
-                        margin: const EdgeInsets.only(bottom: 40),
+                        margin: const EdgeInsets.all(20),
                         child: Column(
                           children: [
-                            Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                Container(
-                                  width: 256,
-                                  height: 256,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    gradient: RadialGradient(
-                                      colors: [
-                                        primaryColor.withOpacity(0.1),
-                                        Colors.transparent,
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 256,
-                                  height: 256,
-                                  child: Stack(
-                                    alignment: Alignment.center,
-                                    children: [
-                                      Container(
-                                        width: 192,
-                                        height: 192,
-                                        decoration: BoxDecoration(
-                                          border: Border.all(
-                                            color: primaryColor.withOpacity(0.3),
-                                            width: 2,
-                                            style: BorderStyle.solid,
-                                          ),
-                                          borderRadius: BorderRadius.circular(24),
-                                        ),
-                                        child: const AnimatedPulse(),
-                                      ),
-                                      Icon(
-                                        Icons.face_unlock_outlined,
-                                        size: 120,
-                                        color: primaryColor,
-                                      ),
-                                      Positioned(
-                                        top: 128,
-                                        left: 0,
-                                        right: 0,
-                                        child: Container(
-                                          height: 2,
-                                          decoration: BoxDecoration(
-                                            gradient: LinearGradient(
-                                              colors: [
-                                                Colors.transparent,
-                                                primaryColor,
-                                                Colors.transparent,
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
+                            // Animación de rostro (componente reutilizable)
+                            const SimpleFaceScanAnimation(
+                              size: 0.65,
+                              repeat: true,
                             ),
+
                             const SizedBox(height: 18),
+
                             Text(
                               'Bienvenido${_username != null ? " $_username" : ""}',
                               style: const TextStyle(
@@ -301,6 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 color: Color(0xFF111418),
                               ),
                             ),
+
                             if (_esAdmin != null)
                               Padding(
                                 padding: const EdgeInsets.only(top: 4),
@@ -311,8 +264,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                   decoration: BoxDecoration(
                                     color: _esAdmin!
-                                      ? Colors.blue.withOpacity(0.2)
-                                      : Colors.grey.withOpacity(0.1),
+                                        ? Colors.blue.withOpacity(0.2)
+                                        : Colors.grey.withOpacity(0.1),
                                     borderRadius: BorderRadius.circular(20),
                                   ),
                                   child: Text(
@@ -321,14 +274,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
                                       color: _esAdmin!
-                                        ? Colors.blue[800]
-                                        : Colors.grey[600],
+                                          ? Colors.blue[800]
+                                          : Colors.grey[600],
                                     ),
                                   ),
                                 ),
                               ),
                             const SizedBox(height: 8),
-
                           ],
                         ),
                       ),
@@ -336,8 +288,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       // Action Buttons
                       Column(
                         children: [
-                          // Register Button
-                         // Register Button - Solo visible para administradores
+                          // Register Button - Solo visible para administradores
                           if (_esAdmin == true) ...[
                             Material(
                               color: primaryColor,
@@ -408,7 +359,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             const SizedBox(height: 16), // Espaciado condicional
                           ],
 
-
                           // Verify Button
                           Container(
                             decoration: BoxDecoration(
@@ -435,7 +385,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => const VerifyScreen(),
+                                      builder: (context) =>
+                                          const VerifyScreen(),
                                     ),
                                   );
                                 },
@@ -448,7 +399,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                         padding: const EdgeInsets.all(12),
                                         decoration: BoxDecoration(
                                           color: primaryColor.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(8),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
                                         ),
                                         child: Icon(
                                           Icons.photo_camera,
@@ -459,7 +412,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                       const SizedBox(width: 16),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
                                             const Text(
                                               'Verificar Persona',
@@ -496,8 +450,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-        // Navigation Footer - Versión condicional
-       // Navigation Footer - Solo visible para administradores
+          // Navigation Footer - Solo visible para administradores
           if (_esAdmin == true) ...[
             NavigationFooter(
               currentIndex: 0,
@@ -520,62 +473,6 @@ class _HomeScreenState extends State<HomeScreen> {
           // Sin else - no se muestra nada para usuarios no admin
           const SizedBox(height: 8),
         ],
-      ),
-    );
-  }
-}
-
-class AnimatedPulse extends StatefulWidget {
-  const AnimatedPulse({super.key});
-
-  @override
-  State<AnimatedPulse> createState() => _AnimatedPulseState();
-}
-
-class _AnimatedPulseState extends State<AnimatedPulse>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(seconds: 2),
-      vsync: this,
-    )..repeat(reverse: true);
-
-    _animation = Tween<double>(
-      begin: 1.0,
-      end: 1.1,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
-  }
-
-  @override
-  void dispose() {
-    _controller.stop();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _animation,
-      builder: (context, child) {
-        return Transform.scale(scale: _animation.value, child: child);
-      },
-      child: Container(
-        width: 192,
-        height: 192,
-        decoration: BoxDecoration(
-          border: Border.all(
-            color: const Color(0xFF137FEC).withOpacity(0.3),
-            width: 2,
-            style: BorderStyle.solid,
-          ),
-          borderRadius: BorderRadius.circular(24),
-        ),
       ),
     );
   }
