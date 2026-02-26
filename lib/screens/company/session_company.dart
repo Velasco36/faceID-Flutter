@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-
-
 class SessionCompany extends StatefulWidget {
   const SessionCompany({super.key});
 
@@ -42,17 +40,16 @@ class _SessionCompanyState extends State<SessionCompany>
       parent: _fadeController,
       curve: Curves.easeOut,
     );
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.08),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _slideController,
-      curve: Curves.easeOutCubic,
-    ));
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.08), end: Offset.zero).animate(
+          CurvedAnimation(parent: _slideController, curve: Curves.easeOutCubic),
+        );
 
     Future.delayed(const Duration(milliseconds: 100), () {
-      _fadeController.forward();
-      _slideController.forward();
+      if (mounted) {
+        _fadeController.forward();
+        _slideController.forward();
+      }
     });
   }
 
@@ -69,7 +66,6 @@ class _SessionCompanyState extends State<SessionCompany>
 
     setState(() => _isLoading = true);
 
-    // Simula un proceso de validación
     await Future.delayed(const Duration(seconds: 2));
 
     if (mounted) {
@@ -83,12 +79,11 @@ class _SessionCompanyState extends State<SessionCompany>
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: isDark
-          ? SystemUiOverlayStyle.light
-          : SystemUiOverlayStyle.dark,
+      value: isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
       child: Scaffold(
-        backgroundColor:
-            isDark ? const Color(0xFF101922) : const Color.fromARGB(255, 255, 255, 255),
+        backgroundColor: isDark
+            ? const Color(0xFF101922)
+            : const Color(0xFFFFFFFF),
         body: SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -102,7 +97,6 @@ class _SessionCompanyState extends State<SessionCompany>
                     decoration: BoxDecoration(
                       color: isDark ? const Color(0xFF1A2535) : Colors.white,
                       borderRadius: BorderRadius.circular(16),
-
                     ),
                     child: Form(
                       key: _formKey,
@@ -110,9 +104,10 @@ class _SessionCompanyState extends State<SessionCompany>
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           const SizedBox(height: 32),
-
                           const SizedBox(height: 20),
-                          _buildLottieAnimation(),
+                          // ✅ FIX: RepaintBoundary aísla el repaint de la animación
+                          // Evita que el AnimatedBuilder redibuje toda la pantalla
+                          RepaintBoundary(child: _buildLottieAnimation()),
                           const SizedBox(height: 24),
                           _buildWelcomeText(isDark),
                           _buildFormSection(isDark),
@@ -130,7 +125,6 @@ class _SessionCompanyState extends State<SessionCompany>
       ),
     );
   }
-
 
   Widget _buildLottieAnimation() {
     return Padding(
@@ -151,15 +145,10 @@ class _SessionCompanyState extends State<SessionCompany>
             ),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Stack(
+          child: const Stack(
             alignment: Alignment.center,
-            children: [
-
-              _AnimatedScanPlaceholder(),
-
-            ],
+            children: [_AnimatedScanPlaceholder()],
           ),
-
         ),
       ),
     );
@@ -213,7 +202,6 @@ class _SessionCompanyState extends State<SessionCompany>
           const SizedBox(height: 8),
           Row(
             children: [
-              // Prefix dropdown
               Container(
                 width: 88,
                 height: 52,
@@ -250,20 +238,20 @@ class _SessionCompanyState extends State<SessionCompany>
                         color: isDark ? Colors.white : const Color(0xFF0F172A),
                       ),
                       items: _prefixes
-                          .map((p) => DropdownMenuItem(
-                                value: p,
-                                child: Text(p),
-                              ))
+                          .map(
+                            (p) => DropdownMenuItem(value: p, child: Text(p)),
+                          )
                           .toList(),
                       onChanged: (val) {
-                        if (val != null) setState(() => _selectedPrefix = val);
+                        if (val != null) {
+                          setState(() => _selectedPrefix = val);
+                        }
                       },
                     ),
                   ),
                 ),
               ),
               const SizedBox(width: 10),
-              // RIF number input
               Expanded(
                 child: SizedBox(
                   height: 52,
@@ -286,7 +274,9 @@ class _SessionCompanyState extends State<SessionCompany>
                           ? const Color(0xFF1E293B)
                           : const Color(0xFFF8FAFC),
                       contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 14),
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide(
@@ -317,7 +307,6 @@ class _SessionCompanyState extends State<SessionCompany>
             ],
           ),
           const SizedBox(height: 16),
-          // Info banner
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -348,7 +337,6 @@ class _SessionCompanyState extends State<SessionCompany>
             ),
           ),
           const SizedBox(height: 24),
-          // Continue button
           SizedBox(
             width: double.infinity,
             height: 54,
@@ -438,11 +426,20 @@ class _SessionCompanyState extends State<SessionCompany>
   }
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Placeholder animado (sustituye por Lottie o VideoPlayer cuando tengas el asset)
-// ──────────────────────────────────────────────────────────────────────────────
+// ✅ FIX: Convertido a StatefulWidget con const constructor
+// El problema original: AnimatedBuilder con width dinámica (110 + 20 * value)
+// forzaba al sistema gráfico a crear nuevos buffers en cada frame → BLASTBufferQueue overflow
+//
+// Solución aplicada:
+// 1. Usar Transform.scale en lugar de cambiar width/height dinámicamente
+//    → El buffer gráfico se crea UNA sola vez y se reutiliza (solo escala en GPU)
+// 2. RepaintBoundary en el padre → aísla repaints al contenedor de la animación
+// 3. Animación del scan usa Transform.translate en lugar de Positioned con top dinámico
+//    → Mismo beneficio: no recrea buffers, solo transforma en GPU
 
 class _AnimatedScanPlaceholder extends StatefulWidget {
+  const _AnimatedScanPlaceholder();
+
   @override
   State<_AnimatedScanPlaceholder> createState() =>
       _AnimatedScanPlaceholderState();
@@ -477,47 +474,56 @@ class _AnimatedScanPlaceholderState extends State<_AnimatedScanPlaceholder>
         return Stack(
           alignment: Alignment.center,
           children: [
-            // Círculo pulsante de fondo
-            Opacity(
-              opacity: 0.15 + 0.1 * _scanAnim.value,
-              child: Container(
-                width: 110 + 20 * _scanAnim.value,
-                height: 110 + 20 * _scanAnim.value,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF137FEC),
-                  shape: BoxShape.circle,
+            // ✅ FIX: Transform.scale en lugar de width/height dinámicos
+            // Antes: Container(width: 110 + 20 * value) → crea nuevo buffer cada frame
+            // Ahora: Transform.scale → reutiliza el buffer existente, solo escala en GPU
+            Transform.scale(
+              scale: 1.0 + 0.18 * _scanAnim.value,
+              child: Opacity(
+                opacity: 0.15 + 0.1 * _scanAnim.value,
+                child: Container(
+                  width: 110,
+                  height: 110,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF137FEC),
+                    shape: BoxShape.circle,
+                  ),
                 ),
               ),
             ),
-            // Ícono de seguridad
-            const Icon(
-              Icons.face_6_rounded,
-              color: Color(0xFF137FEC),
-              size: 56,
-            ),
-            // Línea de escaneo
-            Positioned(
-              top: 20 + 130 * _scanAnim.value,
-              left: 32,
-              right: 32,
-              child: Container(
-                height: 2,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.transparent,
-                      const Color(0xFF137FEC).withOpacity(0.9),
-                      Colors.transparent,
-                    ],
+            // Ícono estático — no necesita animarse
+            child!,
+            // ✅ FIX: Transform.translate en lugar de Positioned con top dinámico
+            // Antes: Positioned(top: 20 + 130 * value) → relayout completo cada frame
+            // Ahora: Transform.translate → solo mueve en GPU, sin relayout
+            Transform.translate(
+              offset: Offset(0, -50 + 100 * _scanAnim.value),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Container(
+                  height: 2,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.transparent,
+                        const Color(0xFF137FEC).withOpacity(0.9),
+                        Colors.transparent,
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
           ],
         );
       },
+      // ✅ El ícono se pasa como child estático → no se reconstruye en cada frame
+      child: const Icon(
+        Icons.face_6_rounded,
+        color: Color(0xFF137FEC),
+        size: 56,
+      ),
     );
   }
 }
-
