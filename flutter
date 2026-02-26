@@ -1,0 +1,9 @@
+      PID    PPID    PGID     WINPID   TTY         UID    STIME COMMAND
+     1916       1    1916      26008  cons1     197609 05:55:48 /usr/bin/bash
+     2161       1    2161      17352  cons4     197609 06:07:09 /usr/bin/bash
+     2326       1    2326      19036  cons5     197609 06:24:39 /usr/bin/bash
+     1933       1    1933       1972  cons2     197609 05:55:48 /usr/bin/bash
+     1915       1    1915      11132  cons0     197609 05:55:48 /usr/bin/bash
+     2375    2326    2375      27960  cons5     197609 06:25:30 /usr/bin/PS
+     2050       1    2050      25284  cons3     197609 05:55:53 /usr/bin/bash
+     2160    1916    2160      14900  cons1     197609 05:57:25 /c/Users/USUARIO/Desktop/face_id_api/venv/Scripts/python
