@@ -44,8 +44,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (result['exito'] == true) {
      await SessionService.saveSession(
-        token: result['data']['token'], // Cambiar aquí
-        usuario: result['data']['usuario'], // Y aquí
+        usuario: result['data']['usuario'], // ✅ sin token
       );
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

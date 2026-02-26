@@ -31,147 +31,107 @@ class _HomeScreenState extends State<HomeScreen> {
     _cargarDatosUsuario();
   }
 
-  Future<void> _cargarDatosUsuario() async {
-    print('🏠 [HomeScreen] Cargando datos de usuario...');
-
+Future<void> _cargarDatosUsuario() async {
     try {
       final usuario = await SessionService.getUsuario();
-      print('📦 Datos de usuario desde SessionService: $usuario');
-
-      // También verificar el token
-      final token = await SessionService.getToken();
-      print(
-        '🔑 Token: ${token != null ? 'Presente (${token.substring(0, 20)}...)' : 'No encontrado'}',
-      );
 
       setState(() {
         _usuario = usuario;
         _username = usuario?['username'];
-        _esAdmin = usuario?['es_admin'];
         _rol = usuario?['rol'];
+        _esAdmin = usuario?['rol'] == 'admin_empresa'; // ✅ derivado del rol
         _isLoading = false;
       });
 
       print('✅ Usuario cargado:');
       print('   - username: $_username');
-      print('   - es_admin: $_esAdmin');
       print('   - rol: $_rol');
+      print('   - es_admin: $_esAdmin');
     } catch (e) {
       print('❌ Error cargando datos de usuario: $e');
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
     }
   }
-
+  
   Future<void> _logout() async {
     print('🚪 [HomeScreen] Iniciando proceso de logout...');
 
     try {
-      // Mostrar indicador de carga
       if (!mounted) return;
+
+      // Mostrar indicador de carga
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (BuildContext context) {
-          return const Center(
-            child: CircularProgressIndicator(
-              color: Colors.blue,
-              strokeWidth: 2.5,
-            ),
-          );
-        },
+        builder: (_) => const Center(
+          child: CircularProgressIndicator(
+            color: Colors.blue,
+            strokeWidth: 2.5,
+          ),
+        ),
       );
 
-      // Verificar datos antes del logout
-      print('📊 Datos antes del logout:');
-      final tokenBefore = await SessionService.getToken();
+      // Debug antes del logout
       final usuarioBefore = await SessionService.getUsuario();
-      print(
-        '   Token antes: ${tokenBefore != null ? "Presente" : "No encontrado"}',
-      );
-      print('   Usuario antes: $usuarioBefore');
+      print('📊 Usuario antes del logout: $usuarioBefore');
 
-      // Llamar al servicio de logout
+      // Llamar al API
       print('📤 Llamando a API logout...');
       final respuesta = await _apiService.logout();
       print('📥 Respuesta del logout: $respuesta');
 
-      // Limpiar sesión local
+      // Limpiar sesión local siempre
       print('🧹 Limpiando sesión local...');
       await SessionService.clearSession();
 
-      // Verificar que se limpió
-      print('🔍 Verificando después del logout:');
-      final tokenAfter = await SessionService.getToken();
+      // Debug después del logout
       final usuarioAfter = await SessionService.getUsuario();
-      print('   Token después: ${tokenAfter ?? "null"}');
-      print('   Usuario después: ${usuarioAfter ?? "null"}');
+      print(
+        '🔍 Usuario después del logout: ${usuarioAfter ?? "null (limpiado ✅)"}',
+      );
 
-      // Cerrar el diálogo de carga
+      // Cerrar diálogo de carga
       if (mounted) Navigator.pop(context);
 
-      // Verificar si el logout fue exitoso
-      if (respuesta['exito'] == true || respuesta['success'] == true) {
-        print('✅ Logout exitoso, redirigiendo a login...');
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
 
-        if (mounted) {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (context) => const LoginScreen()),
-            (route) => false,
-          );
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Sesión cerrada exitosamente'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-      } else {
-        print('⚠️ Logout retornó error pero sesión local limpiada');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                respuesta['mensaje'] ??
-                    respuesta['message'] ??
-                    'Error al cerrar sesión',
-              ),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Sesión cerrada exitosamente'),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
     } catch (e) {
       print('❌ Error en logout: $e');
 
-      // Cerrar el diálogo de carga si está abierto
+      // Cerrar diálogo si está abierto
       if (mounted) Navigator.pop(context);
 
-      // Aún así limpiar sesión local
-      print('🧹 Limpiando sesión local por error...');
+      // Limpiar sesión local aunque haya error
       await SessionService.clearSession();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-
-        // Redirigir a login aunque haya error
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
           (route) => false,
+        );
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al cerrar sesión: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
   }
-
   @override
   Widget build(BuildContext context) {
     final primaryColor = const Color(0xFF137FEC);

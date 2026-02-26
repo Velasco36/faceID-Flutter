@@ -1,4 +1,3 @@
-// lib/services/session_service.dart
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -8,24 +7,13 @@ class SessionService {
     iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
   );
 
-  // ── Keys ──────────────────────────────────────────────
-  static const _keyToken   = 'auth_token';
   static const _keyUsuario = 'usuario_data';
 
-  // ── Guardar sesión completa ────────────────────────────
+  // ── Guardar sesión (solo usuario, no hay token JWT) ────
   static Future<void> saveSession({
-    required String token,
     required Map<String, dynamic> usuario,
   }) async {
-    await Future.wait([
-      _storage.write(key: _keyToken,   value: token),
-      _storage.write(key: _keyUsuario, value: jsonEncode(usuario)),
-    ]);
-  }
-
-  // ── Leer token ─────────────────────────────────────────
-  static Future<String?> getToken() async {
-    return _storage.read(key: _keyToken);
+    await _storage.write(key: _keyUsuario, value: jsonEncode(usuario));
   }
 
   // ── Leer datos de usuario ──────────────────────────────
@@ -35,10 +23,26 @@ class SessionService {
     return jsonDecode(raw) as Map<String, dynamic>;
   }
 
+  // ── Accesos rápidos a campos frecuentes ───────────────
+  static Future<int?> getEmpresaId() async {
+    final u = await getUsuario();
+    return u?['empresa_id'] as int?;
+  }
+
+  static Future<int?> getSucursalId() async {
+    final u = await getUsuario();
+    return u?['sucursal_id'] as int?;
+  }
+
+  static Future<String?> getRol() async {
+    final u = await getUsuario();
+    return u?['rol'] as String?;
+  }
+
   // ── Verificar si hay sesión activa ─────────────────────
   static Future<bool> isLoggedIn() async {
-    final token = await getToken();
-    return token != null && token.isNotEmpty;
+    final raw = await _storage.read(key: _keyUsuario);
+    return raw != null && raw.isNotEmpty;
   }
 
   // ── Borrar sesión (logout) ─────────────────────────────
