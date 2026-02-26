@@ -107,4 +107,3 @@ flutter_native_splash:
   image: assets/logo.png
   android_gravity: center
   fullscreen: true
-  image_size: "70%"  # Puedes ajustar este porcentaje (50%, 70%, 80%, etc.)

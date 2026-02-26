@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Theme aplicado al arrancar la aplicación -->
+    <!-- Theme applied to the Android Window while the process is starting -->
     <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
-        <!-- Establecer un fondo blanco o transparente -->
-        <item name="android:windowBackground">@android:color/white</item>
-        <!-- Opcional: hacer que la barra de notificaciones sea transparente -->
-        <item name="android:windowTranslucentStatus">true</item>
+        <!-- Show a splash screen on the activity. Automatically removed when Flutter draws its first frame -->
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
-
-    <!-- Theme de la aplicación normal -->
+    <!-- Theme applied to the Android Window as soon as the process has started -->
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">@android:color/white</item>
     </style>
