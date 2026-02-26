@@ -13,7 +13,7 @@ class ApiService {
   // local
   // local
   // static const String baseUrl = 'http://192.168.1.249:5000';
-    static const String baseUrl = 'http://10.186.165.16:5000';
+    static const String baseUrl = 'http://192.168.0.6:5000';
   // =======================================================================
   // =======================================================================
 
@@ -384,6 +384,56 @@ Future<Map<String, dynamic>> logout() async {
     }
   }
 
+
+// ─────────────────────────────────────────
+// OBTENER SUCURSALES DE UNA EMPRESA POR RIF
+// ─────────────────────────────────────────
+Future<Map<String, dynamic>> getSucursalesPorRif(String rif) async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/empresas/rif/$rif/sucursales');
+
+      final response = await http
+          .get(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              // Sin token de autorización porque es público
+            },
+          )
+          .timeout(const Duration(seconds: 30));
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {
+          'exito': true,
+          'data': data['sucursales'] ?? data,
+          'empresa': data['empresa'] ?? null,
+        };
+      } else if (response.statusCode == 404) {
+        return {
+          'exito': false,
+          'error': 'Empresa no encontrada',
+          'codigo': 404,
+        };
+      } else {
+        return {
+          'exito': false,
+          'error':
+              data['error'] ?? data['message'] ?? 'Error al obtener sucursales',
+          'codigo': response.statusCode,
+        };
+      }
+    } on SocketException {
+      return {'exito': false, 'error': 'No se pudo conectar al servidor.'};
+    } on FormatException catch (e) {
+      return {
+        'exito': false,
+        'error': 'Error de formato en respuesta: ${e.toString()}',
+      };
+    } on Exception catch (e) {
+      return {'exito': false, 'error': 'Error: ${e.toString()}'};
+    }
+  }
+
 }
-
-

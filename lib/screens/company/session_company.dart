@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../services/api_service.dart'; // Ajusta la ruta según tu estructura
+import 'dart:convert';
 
 class SessionCompany extends StatefulWidget {
   const SessionCompany({super.key});
@@ -19,6 +21,8 @@ class _SessionCompanyState extends State<SessionCompany>
   late AnimationController _slideController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
+
+  final ApiService _apiService = ApiService();
 
   static const _primaryColor = Color(0xFF137FEC);
   static const _prefixes = ['J', 'G', 'V', 'E', 'P'];
@@ -61,17 +65,117 @@ class _SessionCompanyState extends State<SessionCompany>
     super.dispose();
   }
 
-  void _onContinue() async {
-    if (_rifController.text.trim().isEmpty) return;
+  String _formatRif() {
+    return '$_selectedPrefix-${_rifController.text.trim()}';
+  }
+
+void _onContinue() async {
+    final rifSinFormato = _rifController.text.trim();
+    if (rifSinFormato.isEmpty) return;
+
+    // Validar el formulario
+    if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
-    await Future.delayed(const Duration(seconds: 2));
+    final rifCompleto = _formatRif();
 
-    if (mounted) {
-      setState(() => _isLoading = false);
-      // Navigator.pushNamed(context, '/next-screen');
+    try {
+
+      // Llamar al endpoint público
+      final resultado = await _apiService.getSucursalesPorRif(rifCompleto);
+
+      if (!mounted) return;
+
+      if (resultado['exito']) {
+        final sucursales = resultado['data'];
+        final empresa = resultado['empresa'];
+
+
+        if (sucursales != null) {
+          if (sucursales is List) {
+            print('📊 CANTIDAD DE SUCURSALES: ${sucursales.length}');
+
+            for (int i = 0; i < sucursales.length; i++) {
+
+              // Imprimir cada propiedad de la sucursal
+              final sucursal = sucursales[i] as Map<String, dynamic>;
+              sucursal.forEach((key, value) {
+
+              });
+            }
+
+
+            // REDIRECCIONAR SEGÚN LA CANTIDAD DE SUCURSALES
+            if (sucursales.length == 1) {
+              // Si solo hay una sucursal, ir directamente al login
+            
+              Navigator.pushNamed(
+                context,
+                '/login',
+                arguments: {
+                  'rif': rifCompleto,
+                  'empresa': empresa,
+                  'sucursales': sucursales, // Enviamos la lista con 1 elemento
+                },
+              );
+            } else if (sucursales.length > 1) {
+              // Si hay múltiples sucursales, mostrar la pantalla de selección
+
+              Navigator.pushNamed(
+                context,
+                '/branches',
+                arguments: {
+                  'rif': rifCompleto,
+                  'empresa': empresa,
+                  'sucursales': sucursales,
+                },
+              );
+            } else {
+
+              _mostrarError('Esta empresa no tiene sucursales registradas');
+            }
+          } else {
+            print(
+              '⚠️ sucursales NO es una lista, es: ${sucursales.runtimeType}',
+            );
+
+            _mostrarError('Formato de datos incorrecto');
+          }
+        } else {
+
+          _mostrarError('Esta empresa no tiene sucursales registradas');
+        }
+      } else {
+
+        if (resultado['codigo'] == 404) {
+          _mostrarError('RIF no encontrado. Verifique los datos.');
+        } else {
+          _mostrarError(resultado['error'] ?? 'Error al validar el RIF');
+        }
+      }
+    } catch (e, stackTrace) {
+
+      if (!mounted) return;
+      _mostrarError('Error de conexión. Intente nuevamente.');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+
     }
+  }
+
+void _mostrarError(String mensaje) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(mensaje),
+        backgroundColor: Colors.red.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
   }
 
   @override
@@ -98,6 +202,7 @@ class _SessionCompanyState extends State<SessionCompany>
                       color: isDark ? const Color(0xFF1A2535) : Colors.white,
                       borderRadius: BorderRadius.circular(16),
                     ),
+                    // ✅ Solo UN Form widget aquí
                     child: Form(
                       key: _formKey,
                       child: Column(
@@ -105,12 +210,10 @@ class _SessionCompanyState extends State<SessionCompany>
                         children: [
                           const SizedBox(height: 32),
                           const SizedBox(height: 20),
-                          // ✅ FIX: RepaintBoundary aísla el repaint de la animación
-                          // Evita que el AnimatedBuilder redibuje toda la pantalla
                           RepaintBoundary(child: _buildLottieAnimation()),
                           const SizedBox(height: 24),
                           _buildWelcomeText(isDark),
-                          _buildFormSection(isDark),
+                          _buildFormSection(isDark), // ❌ Este ya NO tiene Form
                           _buildFooter(isDark),
                           const SizedBox(height: 24),
                         ],
@@ -185,6 +288,7 @@ class _SessionCompanyState extends State<SessionCompany>
     );
   }
 
+  // ✅ Corregido: Ya no tiene el widget Form anidado
   Widget _buildFormSection(bool isDark) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
@@ -200,6 +304,8 @@ class _SessionCompanyState extends State<SessionCompany>
             ),
           ),
           const SizedBox(height: 8),
+          // ❌ Eliminado el widget Form que estaba aquí
+          // Ahora es solo un Row con los campos
           Row(
             children: [
               Container(
@@ -235,7 +341,9 @@ class _SessionCompanyState extends State<SessionCompany>
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                        color: isDark
+                            ? Colors.white
+                            : const Color(0xFF0F172A),
                       ),
                       items: _prefixes
                           .map(
@@ -262,6 +370,15 @@ class _SessionCompanyState extends State<SessionCompany>
                       FilteringTextInputFormatter.allow(RegExp(r'[\d\-]')),
                       LengthLimitingTextInputFormatter(11),
                     ],
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Ingrese el RIF';
+                      }
+                      if (value.length < 8) {
+                        return 'RIF muy corto';
+                      }
+                      return null;
+                    },
                     style: TextStyle(
                       fontSize: 15,
                       color: isDark ? Colors.white : const Color(0xFF0F172A),
@@ -426,17 +543,7 @@ class _SessionCompanyState extends State<SessionCompany>
   }
 }
 
-// ✅ FIX: Convertido a StatefulWidget con const constructor
-// El problema original: AnimatedBuilder con width dinámica (110 + 20 * value)
-// forzaba al sistema gráfico a crear nuevos buffers en cada frame → BLASTBufferQueue overflow
-//
-// Solución aplicada:
-// 1. Usar Transform.scale en lugar de cambiar width/height dinámicamente
-//    → El buffer gráfico se crea UNA sola vez y se reutiliza (solo escala en GPU)
-// 2. RepaintBoundary en el padre → aísla repaints al contenedor de la animación
-// 3. Animación del scan usa Transform.translate en lugar de Positioned con top dinámico
-//    → Mismo beneficio: no recrea buffers, solo transforma en GPU
-
+// Tu widget _AnimatedScanPlaceholder se queda igual...
 class _AnimatedScanPlaceholder extends StatefulWidget {
   const _AnimatedScanPlaceholder();
 
@@ -474,9 +581,6 @@ class _AnimatedScanPlaceholderState extends State<_AnimatedScanPlaceholder>
         return Stack(
           alignment: Alignment.center,
           children: [
-            // ✅ FIX: Transform.scale en lugar de width/height dinámicos
-            // Antes: Container(width: 110 + 20 * value) → crea nuevo buffer cada frame
-            // Ahora: Transform.scale → reutiliza el buffer existente, solo escala en GPU
             Transform.scale(
               scale: 1.0 + 0.18 * _scanAnim.value,
               child: Opacity(
@@ -491,11 +595,7 @@ class _AnimatedScanPlaceholderState extends State<_AnimatedScanPlaceholder>
                 ),
               ),
             ),
-            // Ícono estático — no necesita animarse
             child!,
-            // ✅ FIX: Transform.translate en lugar de Positioned con top dinámico
-            // Antes: Positioned(top: 20 + 130 * value) → relayout completo cada frame
-            // Ahora: Transform.translate → solo mueve en GPU, sin relayout
             Transform.translate(
               offset: Offset(0, -50 + 100 * _scanAnim.value),
               child: Padding(
@@ -518,7 +618,6 @@ class _AnimatedScanPlaceholderState extends State<_AnimatedScanPlaceholder>
           ],
         );
       },
-      // ✅ El ícono se pasa como child estático → no se reconstruye en cada frame
       child: const Icon(
         Icons.face_6_rounded,
         color: Color(0xFF137FEC),

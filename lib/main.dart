@@ -4,9 +4,11 @@ import 'package:camera/camera.dart';
 import 'package:lottie/lottie.dart';
 import 'screens/home_screen.dart';
 import 'screens/company/session_company.dart';
+import 'screens/brances/branches_screen.dart';
 import 'screens/auth/register_user_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
+
 
 List<CameraDescription> cameras = [];
 
@@ -22,13 +24,16 @@ class MyHttpOverrides extends HttpOverrides {
 Future<void> main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
-
   HttpOverrides.global = MyHttpOverrides();
-  cameras = await availableCameras();
+
+  try {
+    cameras = await availableCameras();
+  } catch (e) {
+    cameras = [];
+  }
 
   runApp(const MyApp());
 }
-
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -44,6 +49,7 @@ class MyApp extends StatelessWidget {
         '/login': (context) => const LoginScreen(),
         '/home': (context) => const HomeScreen(),
         '/company': (context) => const SessionCompany(),
+        '/branches': (context) => const SucursalesScreen(),
       },
     );
   }
