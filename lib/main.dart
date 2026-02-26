@@ -6,6 +6,7 @@ import 'screens/home_screen.dart';
 import 'screens/company/session_company.dart';
 import 'screens/auth/register_user_screen.dart';
 import 'screens/auth/login_screen.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 
 List<CameraDescription> cameras = [];
 
