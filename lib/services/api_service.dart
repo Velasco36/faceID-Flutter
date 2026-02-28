@@ -84,25 +84,54 @@ Future<Map<String, dynamic>> registrarPersona({
   // ─────────────────────────────────────────
   // VERIFICAR IDENTIDAD (contra toda la BD)
   // ─────────────────────────────────────────
+// ─────────────────────────────────────────
+  // VERIFICAR IDENTIDAD
+  // ─────────────────────────────────────────
   Future<Map<String, dynamic>> verificarIdentidad({
     required String imagenPath,
   }) async {
     try {
-      final uri = Uri.parse('$baseUrl/verificar');
+      final uri = Uri.parse('$baseUrl/api/verificar'); // ← URL corregida
       final request = http.MultipartRequest('POST', uri);
+
+      // ✅ Token de autorización (igual que en registrarPersona)
+      final token = await SessionService.getToken();
+      if (token != null) {
+        request.headers['Authorization'] = 'Bearer $token';
+      }
 
       request.files.add(
         await http.MultipartFile.fromPath('imagen', imagenPath),
       );
 
+      debugPrint('══════════════════════════════════════════');
+      debugPrint('📤 POST ${uri.toString()}');
+      debugPrint('🔑 Authorization: Bearer ${token ?? "NULL - sin token"}');
+      debugPrint('🖼  imagen = $imagenPath');
+      debugPrint('══════════════════════════════════════════');
+
       final streamedResponse = await request.send().timeout(
         const Duration(seconds: 30),
       );
       final response = await http.Response.fromStream(streamedResponse);
+
+      debugPrint('📥 Status: ${response.statusCode}');
+      debugPrint('📥 Body:   ${response.body}');
+
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200) {
         return {'exito': true, 'data': data};
+      } else if (response.statusCode == 401) {
+        return {
+          'exito': false,
+          'error': 'Sesión expirada. Vuelve a iniciar sesión.',
+        };
+      } else if (response.statusCode == 404) {
+        return {
+          'exito': false,
+          'error': 'Endpoint no encontrado. Verifica la URL del servidor.',
+        };
       } else {
         return {
           'exito': false,
@@ -110,15 +139,9 @@ Future<Map<String, dynamic>> registrarPersona({
         };
       }
     } on SocketException {
-      return {
-        'exito': false,
-        'error': 'No se pudo conectar al servidor.',
-      };
-    } on Exception catch (e) {
-      return {'exito': false, 'error': 'Error: ${e.toString()}'};
-    }
+      return {'exito': false, 'error': 'No se pudo conectar al servidor.'};
+    } 
   }
-
   // ─────────────────────────────────────────
   // VERIFICAR CONTRA UNA CÉDULA ESPECÍFICA
   // ─────────────────────────────────────────

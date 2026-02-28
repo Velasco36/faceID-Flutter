@@ -22,16 +22,19 @@ class _VerifyScreenState extends State<VerifyScreen>
   bool _faceDetected = false;
   bool _streamActivo = false;
   String? _nombreReconocido;
+  String? _mensajeMovimiento;       // 'entrada' o 'salida'
   String? _errorMensaje;
+  bool _registroDuplicado = false;
+  String? _mensajeDuplicado;        // mensaje_detallado del backend
+  String? _tipoUltimoRegistro;      // 'entrada' o 'salida'
+  String? _tiempoRestante;          // texto_amigable
   XFile? _fotoCapturada;
 
-  // Control de detecciones consecutivas
   int _consecutiveDetections = 0;
   int _consecutiveNoDetections = 0;
   static const int _requiredDetections = 3;
   static const int _requiredNoDetections = 3;
 
-  // Control de cámara
   int _cameraIndex = 0;
   bool _isBackCamera = true;
 
@@ -41,6 +44,12 @@ class _VerifyScreenState extends State<VerifyScreen>
   bool _isDisposed = false;
   bool _isInitializing = false;
   bool _isPaused = false;
+
+  // ── Mismos colores que RegisterScreen ──
+  static const Color _primary  = Color(0xFF137FEC);
+  static const Color _bgCard   = Color(0xFFFFFFFF);
+  static const Color _green    = Color(0xFF30D158);
+  static const Color _yellow   = Color(0xFFFFD60A);
 
   @override
   void initState() {
@@ -52,155 +61,79 @@ class _VerifyScreenState extends State<VerifyScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) async {
     if (_isDisposed) return;
-
-    print('Lifecycle state changed to: $state');
-
     if (state == AppLifecycleState.paused) {
       _isPaused = true;
       await _detenerStream();
       await _controller?.dispose();
       _controller = null;
-      if (mounted) {
-        setState(() {
-          _isCameraInitialized = false;
-          _streamActivo = false;
-        });
-      }
+      if (mounted) setState(() { _isCameraInitialized = false; _streamActivo = false; });
     } else if (state == AppLifecycleState.resumed) {
       _isPaused = false;
       if (mounted && !_isDisposed) {
-        // Pequeña pausa para asegurar que todo está listo
         await Future.delayed(const Duration(milliseconds: 500));
-        if (mounted && !_isDisposed && !_isPaused) {
-          await _initializeCamera();
-        }
+        if (mounted && !_isDisposed && !_isPaused) await _initializeCamera();
       }
     }
   }
 
   Future<void> _initializeCamera() async {
     if (_isDisposed || _isInitializing || _isPaused) return;
-
     _isInitializing = true;
-
     try {
       await _controller?.dispose();
-
-      if (_cameraIndex >= cameras.length) {
-        _cameraIndex = 0;
-      }
-
-      print(
-        'Inicializando cámara: ${_cameraIndex == 0 ? "Trasera" : "Frontal"}',
-      );
-
+      if (_cameraIndex >= cameras.length) _cameraIndex = 0;
       _controller = CameraController(
-        cameras[_cameraIndex],
-        ResolutionPreset.high, // Cambiado a high para mejor calidad
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.nv21,
+        cameras[_cameraIndex], ResolutionPreset.high,
+        enableAudio: false, imageFormatGroup: ImageFormatGroup.nv21,
       );
-
       await _controller!.initialize();
-
-      if (!mounted || _isDisposed || _isPaused) {
-        _isInitializing = false;
-        return;
-      }
-
-      setState(() {
-        _isCameraInitialized = true;
-      });
-
+      if (!mounted || _isDisposed || _isPaused) { _isInitializing = false; return; }
+      setState(() => _isCameraInitialized = true);
       await Future.delayed(const Duration(milliseconds: 300));
-
-      if (mounted && !_isDisposed && !_isPaused) {
-        _iniciarStream();
-      }
+      if (mounted && !_isDisposed && !_isPaused) _iniciarStream();
     } catch (e) {
-      print('Error inicializando cámara: $e');
-      if (mounted && !_isDisposed && !_isPaused) {
-        setState(() {
-          _isCameraInitialized = false;
-        });
-      }
+      debugPrint('Error inicializando cámara: $e');
+      if (mounted && !_isDisposed && !_isPaused) setState(() => _isCameraInitialized = false);
     } finally {
       _isInitializing = false;
     }
   }
 
   Future<void> _cambiarCamara() async {
-    if (cameras.length < 2 || _isDisposed || _isPaused) {
-      return;
-    }
-
+    if (cameras.length < 2 || _isDisposed || _isPaused) return;
     setState(() {
-      _isCameraInitialized = false;
-      _processingFrame = false;
-      _faceDetected = false;
-      _consecutiveDetections = 0;
-      _consecutiveNoDetections = 0;
-      _verificando = false;
-      _nombreReconocido = null;
-      _errorMensaje = null;
-      _fotoCapturada = null;
-      _streamActivo = false;
+      _isCameraInitialized = false; _processingFrame = false; _faceDetected = false;
+      _consecutiveDetections = 0; _consecutiveNoDetections = 0;
+      _verificando = false; _nombreReconocido = null; _mensajeMovimiento = null;
+      _errorMensaje = null; _fotoCapturada = null; _streamActivo = false;
+      _registroDuplicado = false; _mensajeDuplicado = null;
+      _tipoUltimoRegistro = null; _tiempoRestante = null;
     });
-
     await _detenerStream();
     await _controller?.dispose();
     _controller = null;
-
     if (!mounted || _isDisposed || _isPaused) return;
-
-    setState(() {
-      _cameraIndex = _cameraIndex == 0 ? 1 : 0;
-      _isBackCamera = _cameraIndex == 0;
-    });
-
+    setState(() { _cameraIndex = _cameraIndex == 0 ? 1 : 0; _isBackCamera = _cameraIndex == 0; });
     await _initializeCamera();
   }
 
   void _iniciarStream() {
     if (_streamActivo || _isDisposed || _isPaused) return;
     if (_controller == null || !_controller!.value.isInitialized) return;
-
     _streamActivo = true;
-    print(
-      'Stream iniciado - Cámara: ${_cameraIndex == 0 ? "Trasera" : "Frontal"}',
-    );
-
     try {
       _controller!.startImageStream((CameraImage image) async {
-        if (_processingFrame ||
-            _verificando ||
-            _faceDetected ||
-            _isDisposed ||
-            _isPaused ||
-            !mounted)
-          return;
-
+        if (_processingFrame || _verificando || _faceDetected || _isDisposed || _isPaused || !mounted) return;
         _processingFrame = true;
-
         bool detected = false;
         try {
-          detected = await _faceDetector.detectFaceFromCameraImage(
-            image,
-            cameras[_cameraIndex],
-          );
-        } catch (e) {
-          print('Error en detección: $e');
-        }
+          detected = await _faceDetector.detectFaceFromCameraImage(image, cameras[_cameraIndex]);
+        } catch (e) { debugPrint('Error en detección: $e'); }
 
         if (detected) {
           _consecutiveDetections++;
           _consecutiveNoDetections = 0;
-
-          if (_consecutiveDetections >= _requiredDetections &&
-              mounted &&
-              !_isDisposed &&
-              !_isPaused) {
-            print('🎯 Rostro confirmado');
+          if (_consecutiveDetections >= _requiredDetections && mounted && !_isDisposed && !_isPaused) {
             _faceDetected = true;
             _consecutiveDetections = 0;
             setState(() {});
@@ -210,15 +143,12 @@ class _VerifyScreenState extends State<VerifyScreen>
           }
         } else {
           _consecutiveNoDetections++;
-          if (_consecutiveNoDetections >= _requiredNoDetections) {
-            _consecutiveDetections = 0;
-          }
+          if (_consecutiveNoDetections >= _requiredNoDetections) _consecutiveDetections = 0;
         }
-
         _processingFrame = false;
       });
     } catch (e) {
-      print('Error iniciando stream: $e');
+      debugPrint('Error iniciando stream: $e');
       _streamActivo = false;
     }
   }
@@ -227,87 +157,64 @@ class _VerifyScreenState extends State<VerifyScreen>
     if (!_streamActivo) return;
     _streamActivo = false;
     try {
-      if (_controller != null &&
-          _controller!.value.isInitialized &&
-          _controller!.value.isStreamingImages) {
+      if (_controller != null && _controller!.value.isInitialized && _controller!.value.isStreamingImages) {
         await _controller!.stopImageStream();
       }
-    } catch (e) {
-      print('Error deteniendo stream: $e');
-    }
+    } catch (e) { debugPrint('Error deteniendo stream: $e'); }
   }
 
   Future<void> _stopStreamAndVerify() async {
     try {
       await _detenerStream();
-
       await Future.delayed(const Duration(milliseconds: 500));
-
       if (!mounted || _isDisposed || _isPaused) return;
 
       final picture = await _controller?.takePicture();
-      if (picture == null) {
-        _reiniciarEscaneo();
-        return;
-      }
+      if (picture == null) { _reiniciarEscaneo(); return; }
 
-      setState(() {
-        _fotoCapturada = picture;
-        _verificando = true;
-        _errorMensaje = null;
-      });
+      setState(() { _fotoCapturada = picture; _verificando = true; _errorMensaje = null; });
 
-      final respuesta = await _apiService.verificarIdentidad(
-        imagenPath: picture.path,
-      );
+      final respuesta = await _apiService.verificarIdentidad(imagenPath: picture.path);
 
       if (!mounted || _isDisposed || _isPaused) return;
 
       if (respuesta['exito'] == true) {
         final data = respuesta['data'];
-        if (data['verificado'] == true) {
+
+        if (data['verificado'] == true && data['registro_duplicado'] == true) {
+          // ── Movimiento bloqueado por duplicado ──
+          setState(() {
+            _verificando = false;
+            _registroDuplicado = true;
+            _nombreReconocido = data['persona']['nombre'];
+            _mensajeDuplicado = data['mensaje_detallado'];
+            _tipoUltimoRegistro = data['ultimo_registro']?['tipo'];
+            _tiempoRestante = data['tiempo_restante']?['texto_amigable'];
+          });
+        } else if (data['verificado'] == true) {
+          // ── Movimiento registrado correctamente ──
+          final tipo = data['movimiento_registrado']?['tipo'] ?? '';
           setState(() {
             _verificando = false;
             _nombreReconocido = data['persona']['nombre'];
-          });
-          Future.delayed(const Duration(seconds: 2), () {
-            if (mounted && !_isDisposed) {
-              _reiniciarEscaneo();
-            }
+            _mensajeMovimiento = tipo;
           });
         } else {
-          setState(() {
-            _verificando = false;
-            _errorMensaje = 'Rostro no reconocido';
-          });
-          Future.delayed(const Duration(seconds: 2), () {
-            if (mounted && !_isDisposed) {
-              _reiniciarEscaneo();
-            }
-          });
+          setState(() { _verificando = false; _errorMensaje = data['mensaje'] ?? 'Rostro no reconocido'; });
         }
       } else {
-        setState(() {
-          _verificando = false;
-          _errorMensaje = respuesta['error'] ?? 'Error al conectar';
-        });
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted && !_isDisposed) {
-            _reiniciarEscaneo();
-          }
-        });
+        setState(() { _verificando = false; _errorMensaje = respuesta['error'] ?? 'Error al conectar'; });
       }
+
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted && !_isDisposed) _reiniciarEscaneo();
+      });
     } catch (e) {
-      print('Error en verificación: $e');
+      debugPrint('Error en verificación: $e');
       if (mounted && !_isDisposed && !_isPaused) {
-        setState(() {
-          _verificando = false;
-          _errorMensaje = 'Error inesperado';
-        });
+        setState(() { _verificando = false; _errorMensaje = 'Error inesperado'; });
         Future.delayed(const Duration(seconds: 2), () {
-          if (mounted && !_isDisposed) {
-            _reiniciarEscaneo();
-          }
+          if (mounted && !_isDisposed) _reiniciarEscaneo();
         });
       }
     }
@@ -316,14 +223,11 @@ class _VerifyScreenState extends State<VerifyScreen>
   void _reiniciarEscaneo() {
     if (!mounted || _isDisposed || _isPaused) return;
     setState(() {
-      _verificando = false;
-      _faceDetected = false;
-      _nombreReconocido = null;
-      _errorMensaje = null;
-      _fotoCapturada = null;
-      _processingFrame = false;
-      _consecutiveDetections = 0;
-      _consecutiveNoDetections = 0;
+      _verificando = false; _faceDetected = false; _nombreReconocido = null;
+      _mensajeMovimiento = null; _errorMensaje = null; _fotoCapturada = null;
+      _processingFrame = false; _consecutiveDetections = 0; _consecutiveNoDetections = 0;
+      _registroDuplicado = false; _mensajeDuplicado = null;
+      _tipoUltimoRegistro = null; _tiempoRestante = null;
     });
     _iniciarStream();
   }
@@ -338,35 +242,13 @@ class _VerifyScreenState extends State<VerifyScreen>
     super.dispose();
   }
 
-  // ============ MÉTODO CORREGIDO PARA LA CÁMARA ============
   Widget _buildCameraBackground() {
-    if (_fotoCapturada != null) {
-      return Image.file(File(_fotoCapturada!.path), fit: BoxFit.cover);
-    }
-
-    if (_controller == null || !_controller!.value.isInitialized) {
-      return Container(color: Colors.black);
-    }
-
+    if (_fotoCapturada != null) return Image.file(File(_fotoCapturada!.path), fit: BoxFit.cover);
+    if (_controller == null || !_controller!.value.isInitialized) return Container(color: Colors.black);
     try {
-      // Obtener el tamaño de la pantalla
       final size = MediaQuery.of(context).size;
-
-      // Calcular la escala para que la cámara ocupe toda la pantalla
-      // sin distorsionarse
-      final cameraAspectRatio = _controller!.value.aspectRatio;
-      final screenAspectRatio = size.aspectRatio;
-
-      // Calcular la escala basada en la relación de aspecto
-      double scale;
-      if (cameraAspectRatio > screenAspectRatio) {
-        // La cámara es más ancha que la pantalla, ajustar por altura
-        scale = size.height / (size.width / cameraAspectRatio);
-      } else {
-        // La cámara es más alta que la pantalla, ajustar por ancho
-        scale = size.width / (size.height * cameraAspectRatio);
-      }
-
+      var scale = size.aspectRatio / _controller!.value.aspectRatio;
+      if (scale < 1) scale = 1 / scale;
       return ClipRect(
         child: OverflowBox(
           alignment: Alignment.center,
@@ -374,50 +256,13 @@ class _VerifyScreenState extends State<VerifyScreen>
             fit: BoxFit.fitHeight,
             child: SizedBox(
               width: size.width,
-              height: size.width * cameraAspectRatio,
+              height: size.width * _controller!.value.aspectRatio,
               child: CameraPreview(_controller!),
             ),
           ),
         ),
       );
-    } catch (e) {
-      print('Error mostrando preview: $e');
-      return Container(color: Colors.black);
-    }
-  }
-
-  // Método alternativo más simple si el anterior no funciona bien
-  Widget _buildCameraBackgroundAlternativo() {
-    if (_fotoCapturada != null) {
-      return Image.file(File(_fotoCapturada!.path), fit: BoxFit.cover);
-    }
-
-    if (_controller == null || !_controller!.value.isInitialized) {
-      return Container(color: Colors.black);
-    }
-
-    try {
-      return Center(
-        child: AspectRatio(
-          aspectRatio: _controller!.value.aspectRatio,
-          child: CameraPreview(_controller!),
-        ),
-      );
-    } catch (e) {
-      print('Error mostrando preview: $e');
-      return Container(color: Colors.black);
-    }
-  }
-  // ============ FIN DEL MÉTODO CORREGIDO ============
-
-  bool _mostrarBotonCamara() {
-    return !_verificando &&
-        _nombreReconocido == null &&
-        _errorMensaje == null &&
-        _fotoCapturada == null &&
-        _isCameraInitialized &&
-        !_isPaused &&
-        cameras.length > 1;
+    } catch (e) { return Container(color: Colors.black); }
   }
 
   @override
@@ -427,94 +272,83 @@ class _VerifyScreenState extends State<VerifyScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Fondo negro
-          Container(color: Colors.black),
-
-          // Cámara - Usar el método corregido
+          // ── Cámara ──
           if (_isCameraInitialized && !_isPaused) _buildCameraBackground(),
 
-          // Overlays
-          if (_verificando && !_isPaused) _buildLoadingOverlay(),
-          if (_nombreReconocido != null && !_verificando && !_isPaused)
-            _buildResultadoExito(),
-          if (_errorMensaje != null && !_verificando && !_isPaused)
-            _buildResultadoError(),
-
-          // Marco de detección
-          if (_isCameraInitialized &&
-              !_verificando &&
-              _fotoCapturada == null &&
-              !_isPaused)
-            _buildMarcoDeteccion(),
-
-          // Texto superior
-          if (_isCameraInitialized && !_isPaused) _buildTextoSuperior(),
-
-          // Botón de regresar
-          Positioned(
-            top: 48,
-            left: 16,
-            child: SafeArea(
-              child: IconButton(
-                icon: const Icon(
-                  Icons.arrow_back_ios,
-                  color: Colors.white,
-                  size: 28,
+          // ── Gradiente sobre cámara (igual que RegisterScreen) ──
+          if (_isCameraInitialized && !_isPaused)
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xBB000000), Color(0x33000000), Color(0xBB000000)],
                 ),
-                onPressed: () {
-                  Navigator.pushNamedAndRemoveUntil(
-                    context,
-                    '/home',
-                    (route) => false,
-                  );
-                },
               ),
             ),
-          ),
 
-          // Botón de cambio de cámara
-          if (_mostrarBotonCamara())
+          // ── Marco de detección ──
+          if (_isCameraInitialized && !_verificando && _fotoCapturada == null && _nombreReconocido == null && _errorMensaje == null && !_isPaused)
+            _buildMarcoDeteccion(),
+
+          // ── Texto guía (igual que RegisterScreen) ──
+          if (_isCameraInitialized && !_verificando && _nombreReconocido == null && _errorMensaje == null && !_registroDuplicado && !_isPaused)
+            _buildTextoSuperior(),
+
+          // ── Loading ──
+          if (_verificando) _buildLoadingOverlay(),
+
+          // ── Resultado exitoso ──
+          if (_nombreReconocido != null && !_verificando && !_registroDuplicado) _buildResultadoExito(),
+
+          // ── Resultado duplicado ──
+          if (_registroDuplicado && !_verificando) _buildResultadoDuplicado(),
+
+          // ── Resultado error ──
+          if (_errorMensaje != null && !_verificando) _buildResultadoError(),
+
+          // ── Barra superior: back + toggle cámara (igual que RegisterScreen) ──
+          if (!_verificando)
             Positioned(
-              bottom: 48,
-              right: 16,
+              top: 0, left: 0, right: 0,
               child: SafeArea(
-                child: GestureDetector(
-                  onTap: _cambiarCamara,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.black45,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white30, width: 1),
-                    ),
-                    child: const Icon(
-                      Icons.cameraswitch,
-                      color: Colors.white,
-                      size: 28,
-                    ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: Row(
+                    children: [
+                      _buildIconBtn(
+                        icon: Icons.arrow_back_ios_new_rounded,
+                        onTap: () => Navigator.pushNamedAndRemoveUntil(context, '/home', (r) => false),
+                      ),
+                      const Spacer(),
+                      if (_isCameraInitialized && !_isPaused && _nombreReconocido == null && _errorMensaje == null && cameras.length > 1)
+                        _buildIconBtn(icon: Icons.cameraswitch_rounded, onTap: _cambiarCamara),
+                    ],
                   ),
                 ),
               ),
             ),
 
-          // Mensaje de error de inicialización
+          // ── Error de cámara ──
           if (!_isCameraInitialized && !_isInitializing && !_isPaused)
             Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text(
-                    'Error al iniciar cámara',
-                    style: TextStyle(color: Colors.white, fontSize: 18),
-                  ),
+                  const Icon(Icons.videocam_off_rounded, color: Colors.white54, size: 48),
+                  const SizedBox(height: 16),
+                  const Text('Error al iniciar cámara', style: TextStyle(color: Colors.white70, fontSize: 16)),
                   const SizedBox(height: 20),
-                  ElevatedButton(
-                    onPressed: _initializeCamera,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
+                  GestureDetector(
+                    onTap: _initializeCamera,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: _primary,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text('Reintentar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                     ),
-                    child: const Text('Reintentar'),
                   ),
                 ],
               ),
@@ -524,120 +358,98 @@ class _VerifyScreenState extends State<VerifyScreen>
     );
   }
 
+  // ── Mismo estilo de botón que RegisterScreen ──
+  Widget _buildIconBtn({required IconData icon, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.5),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withOpacity(0.12), width: 1),
+        ),
+        child: Icon(icon, color: Colors.white, size: 20),
+      ),
+    );
+  }
+
+  // ── Mismo marco de detección que RegisterScreen ──
   Widget _buildMarcoDeteccion() {
     final progress = _consecutiveDetections / _requiredDetections;
-    Color color;
-    if (_consecutiveDetections == 0) {
-      color = Colors.white54;
-    } else if (progress < 0.6) {
-      color = Colors.yellowAccent;
-    } else {
-      color = Colors.greenAccent;
-    }
+    Color borderColor;
+    if (_consecutiveDetections == 0) borderColor = Colors.white38;
+    else if (progress < 0.6) borderColor = _yellow;
+    else borderColor = _green;
 
     return Center(
       child: Container(
         width: 220,
-        height: 280,
+        height: 285,
         decoration: BoxDecoration(
-          border: Border.all(color: color, width: 2.5),
+          border: Border.all(color: borderColor, width: 2.5),
           borderRadius: BorderRadius.circular(120),
         ),
       ),
     );
   }
 
+  // ── Mismo texto guía pill que RegisterScreen ──
   Widget _buildTextoSuperior() {
-    String texto;
-    Color color;
-
-    if (_verificando) {
-      texto = 'Procesando...';
-      color = Colors.white;
-    } else if (_faceDetected) {
-      texto = 'Rostro detectado ✓';
-      color = Colors.greenAccent;
+    String texto; Color color; IconData icon;
+    if (_faceDetected) {
+      texto = 'Rostro detectado'; color = _green; icon = Icons.check_circle_outline_rounded;
     } else if (_consecutiveDetections > 0) {
-      texto = 'Mantén el rostro quieto...';
-      color = Colors.yellowAccent;
-    } else if (_errorMensaje != null) {
-      texto = '';
-      color = Colors.transparent;
+      texto = 'Mantén el rostro quieto...'; color = _yellow; icon = Icons.face_retouching_natural;
     } else {
-      texto = 'Coloca tu rostro en el marco';
-      color = Colors.white;
+      texto = 'Coloca tu rostro en el marco'; color = Colors.white; icon = Icons.face_rounded;
     }
 
     return Positioned(
-      top: 100,
-      left: 0,
-      right: 0,
+      top: 108, left: 0, right: 0,
       child: Center(
-        child: Text(
-          texto,
-          style: TextStyle(
-            color: color,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            shadows: const [Shadow(color: Colors.black, blurRadius: 8)],
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.55),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: color.withOpacity(0.25), width: 1),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: color, size: 15),
+              const SizedBox(width: 6),
+              Text(texto, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600)),
+            ],
           ),
         ),
       ),
     );
   }
 
+  // ── Mismo loading que RegisterScreen ──
   Widget _buildLoadingOverlay() {
     return Container(
-      color: Colors.black54,
-      child: const Center(
+      color: Colors.white.withOpacity(0.92),
+      child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
-            SizedBox(height: 20),
-            Text(
-              'Verificando identidad...',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w500,
+            SizedBox(
+              width: 42,
+              height: 42,
+              child: CircularProgressIndicator(
+                color: _primary,
+                backgroundColor: _primary.withOpacity(0.12),
+                strokeWidth: 3,
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildResultadoExito() {
-    return Positioned(
-      bottom: 80,
-      left: 24,
-      right: 24,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
-        decoration: BoxDecoration(
-          color: Colors.green.shade800.withOpacity(0.92),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.greenAccent, width: 1.5),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.verified_user, color: Colors.white, size: 40),
-            const SizedBox(height: 10),
+            const SizedBox(height: 18),
             const Text(
-              'Bienvenido',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
-            ),
-            Text(
-              _nombreReconocido!,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
+              'Verificando...',
+              style: TextStyle(color: Color(0xFF0F172A), fontSize: 15, fontWeight: FontWeight.w500, letterSpacing: 0.2),
             ),
           ],
         ),
@@ -645,45 +457,218 @@ class _VerifyScreenState extends State<VerifyScreen>
     );
   }
 
-  Widget _buildResultadoError() {
-    final esNoReconocido = _errorMensaje == 'Rostro no reconocido';
-    return Positioned(
-      bottom: 80,
-      left: 24,
-      right: 24,
+  // ── Tarjeta de éxito con tipo de movimiento ──
+  Widget _buildResultadoExito() {
+    final esEntrada = _mensajeMovimiento == 'entrada';
+    final color = esEntrada ? _green : _primary;
+    final icon = esEntrada ? Icons.login_rounded : Icons.logout_rounded;
+    final label = esEntrada ? 'Entrada registrada' : 'Salida registrada';
+
+    return Center(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+        margin: const EdgeInsets.symmetric(horizontal: 32),
+        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 28),
         decoration: BoxDecoration(
-          color: (esNoReconocido ? Colors.red.shade800 : Colors.orange.shade800)
-              .withOpacity(0.92),
+          color: _bgCard,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: esNoReconocido ? Colors.redAccent : Colors.orangeAccent,
-            width: 1.5,
-          ),
+          border: Border.all(color: color.withOpacity(0.35), width: 1.5),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 24, offset: const Offset(0, 8)),
+          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              esNoReconocido ? Icons.person_off : Icons.wifi_off,
-              color: Colors.white,
-              size: 40,
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
+              child: Icon(icon, color: color, size: 28),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 14),
             Text(
-              _errorMensaje!,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
+              label,
+              style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 0.2),
             ),
             const SizedBox(height: 4),
-            const Text(
-              'Reintentando...',
-              style: TextStyle(color: Colors.white60, fontSize: 13),
+            Text(
+              _nombreReconocido!,
+              style: const TextStyle(color: Color(0xFF0F172A), fontSize: 22, fontWeight: FontWeight.w700),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            // Barra de progreso auto-dismiss
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: null, // indeterminate mientras espera
+                backgroundColor: color.withOpacity(0.1),
+                valueColor: AlwaysStoppedAnimation<Color>(color),
+                minHeight: 3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Tarjeta de movimiento bloqueado por duplicado ──
+  Widget _buildResultadoDuplicado() {
+    final esEntrada = _tipoUltimoRegistro == 'entrada';
+    const Color warningColor = Color(0xFFF59E0B);
+
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 28),
+        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 24),
+        decoration: BoxDecoration(
+          color: _bgCard,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: warningColor.withOpacity(0.5), width: 1.5),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 24, offset: const Offset(0, 8)),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Ícono de advertencia
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: warningColor.withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.warning_amber_rounded, color: warningColor, size: 28),
+            ),
+            const SizedBox(height: 12),
+
+            // Nombre
+            Text(
+              _nombreReconocido ?? '',
+              style: const TextStyle(color: Color(0xFF0F172A), fontSize: 20, fontWeight: FontWeight.w700),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 6),
+
+            // Último tipo de registro
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: (esEntrada ? _green : _primary).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    esEntrada ? Icons.login_rounded : Icons.logout_rounded,
+                    size: 13,
+                    color: esEntrada ? _green : _primary,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Ya registró su ${_tipoUltimoRegistro ?? ''}',
+                    style: TextStyle(
+                      color: esEntrada ? _green : _primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // Divider
+            Container(height: 1, color: const Color(0xFFE2E8F0)),
+            const SizedBox(height: 14),
+
+            // Mensaje detallado
+            Row(
+              children: [
+                const Icon(Icons.schedule_rounded, color: Color(0xFF94A3B8), size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _mensajeDuplicado ?? 'Debe esperar antes del próximo registro.',
+                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 13, height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+
+            if (_tiempoRestante != null) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF7ED),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: warningColor.withOpacity(0.3)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.timer_outlined, color: warningColor, size: 15),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Espera: $_tiempoRestante',
+                      style: const TextStyle(
+                        color: Color(0xFF92400E),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Mismo toast de error que RegisterScreen ──
+  Widget _buildResultadoError() {
+    final esNoReconocido = _errorMensaje == 'Rostro no reconocido' ||
+        (_errorMensaje?.contains('coincidencia') ?? false);
+
+    return Positioned(
+      bottom: 36, left: 18, right: 18,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF1F1),
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: Colors.red.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              esNoReconocido ? Icons.person_off_rounded : Icons.wifi_off_rounded,
+              color: Colors.redAccent, size: 18,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _errorMensaje!,
+                    style: const TextStyle(color: Color(0xFF7F1D1D), fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                  const Text(
+                    'Reintentando en breve...',
+                    style: TextStyle(color: Color(0xFFEF4444), fontSize: 11),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
