@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import '../services/session_service.dart';
 
 class ApiService {
   // ⚠️ Cambia esta IP por la IP de tu PC donde corre Flask
@@ -293,22 +292,41 @@ class ApiService {
   // ─────────────────────────────────────────
   // LOGIN DE USUARIO
   // ─────────────────────────────────────────
+
 Future<Map<String, dynamic>> login({
     required String username,
     required String password,
+    int? empresaId, // 👈 NUEVO PARÁMETRO
+    int? sucursalId, // 👈 NUEVO PARÁMETRO
   }) async {
     try {
       final uri = Uri.parse('$baseUrl/api/auth/login');
+
+      // ✅ PRIMERO: Construir el body con los parámetros
+      Map<String, dynamic> body = {'username': username, 'password': password};
+
+      // ✅ DESPUÉS: Agregar empresa_id solo si no es null
+      if (empresaId != null) {
+        body['empresa_id'] = empresaId;
+      }
+
+      // ✅ DESPUÉS: Agregar sucursal_id solo si no es null
+      if (sucursalId != null) {
+        body['sucursal_id'] = sucursalId;
+      }
+
+      print('📤 Enviando login request: $body');
 
       final response = await http
           .post(
             uri,
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'username': username, 'password': password}),
+            body: jsonEncode(body),
           )
           .timeout(const Duration(seconds: 30));
 
       final data = jsonDecode(response.body);
+      print('📥 Respuesta login: $data');
 
       if (response.statusCode == 200) {
         return {'exito': true, 'data': data};
@@ -357,51 +375,58 @@ Future<Map<String, dynamic>> logout() async {
 // ─────────────────────────────────────────
 // OBTENER SUCURSALES DE UNA EMPRESA POR RIF
 // ─────────────────────────────────────────
+
 Future<Map<String, dynamic>> getSucursalesPorRif(String rif) async {
     try {
       final uri = Uri.parse('$baseUrl/api/empresas/rif/$rif/sucursales');
 
-      final response = await http
-          .get(
-            uri,
-            headers: {
-              'Content-Type': 'application/json',
-              // Sin token de autorización porque es público
-            },
-          )
-          .timeout(const Duration(seconds: 30));
+      final response = await http.get(uri).timeout(const Duration(seconds: 30));
 
       final data = jsonDecode(response.body);
+      print('📥 getSucursalesPorRif - Respuesta completa: $data');
+
+      // 👀 Logs de depuración
+      print('🔍 Verificando campos:');
+      print('  • data["empresa"]: ${data['empresa']}');
+      print('  • data["empresa_id"]: ${data['empresa_id']}');
+      print('  • data["sucursales"] es List? ${data['sucursales'] is List}');
+
+      if (data['sucursales'] != null && data['sucursales'] is List) {
+        print('  • Primera sucursal: ${data['sucursales'][0]}');
+        print(
+          '  • empresa_id en sucursal: ${data['sucursales'][0]['empresa_id']}',
+        );
+      }
 
       if (response.statusCode == 200) {
+        // Intentar obtener empresa_id de la respuesta
+        int? empresaId = data['empresa_id'];
+
+        // Si no viene, intentar obtenerlo de la primera sucursal
+        if (empresaId == null &&
+            data['sucursales'] != null &&
+            data['sucursales'] is List &&
+            data['sucursales'].isNotEmpty) {
+          empresaId = data['sucursales'][0]['empresa_id'] as int?;
+          print('✅ empresa_id obtenido de la primera sucursal: $empresaId');
+        }
+
         return {
           'exito': true,
-          'data': data['sucursales'] ?? data,
-          'empresa': data['empresa'] ?? null,
-        };
-      } else if (response.statusCode == 404) {
-        return {
-          'exito': false,
-          'error': 'Empresa no encontrada',
-          'codigo': 404,
+          'data': data['sucursales'],
+          'empresa': data['empresa'],
+          'empresa_id': empresaId,
+          'total_sucursales': data['total_sucursales'],
         };
       } else {
         return {
           'exito': false,
-          'error':
-              data['error'] ?? data['message'] ?? 'Error al obtener sucursales',
+          'error': 'Error del servidor: ${response.statusCode}',
           'codigo': response.statusCode,
         };
       }
-    } on SocketException {
-      return {'exito': false, 'error': 'No se pudo conectar al servidor.'};
-    } on FormatException catch (e) {
-      return {
-        'exito': false,
-        'error': 'Error de formato en respuesta: ${e.toString()}',
-      };
-    } on Exception catch (e) {
-      return {'exito': false, 'error': 'Error: ${e.toString()}'};
+    } catch (e) {
+      return {'exito': false, 'error': 'Error de conexión: $e'};
     }
   }
 

@@ -73,7 +73,6 @@ void _onContinue() async {
     final rifSinFormato = _rifController.text.trim();
     if (rifSinFormato.isEmpty) return;
 
-    // Validar el formulario
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
@@ -81,91 +80,135 @@ void _onContinue() async {
     final rifCompleto = _formatRif();
 
     try {
+      print('🔍 ===== INICIO DE FLUJO RIF =====');
+      print('📤 Enviando solicitud de sucursales para RIF: $rifCompleto');
 
-      // Llamar al endpoint público
       final resultado = await _apiService.getSucursalesPorRif(rifCompleto);
 
       if (!mounted) return;
 
+      // 👀 IMPRIMIR LA RESPUESTA COMPLETA DEL API
+      print('📥 RESPUESTA COMPLETA DEL API:');
+      print('══════════════════════════════════════════════');
+      print('resultado: $resultado');
+      print('resultado["exito"]: ${resultado['exito']}');
+      print('resultado["data"]: ${resultado['data']}');
+      print('resultado["empresa"]: ${resultado['empresa']}');
+      print('resultado["empresa_id"]: ${resultado['empresa_id']}');
+      print('══════════════════════════════════════════════');
+
       if (resultado['exito']) {
         final sucursales = resultado['data'];
         final empresa = resultado['empresa'];
+        final empresaId = resultado['empresa_id'];
 
+        // 👀 IMPRIMIR LO QUE VAMOS A ENVIAR A LA SIGUIENTE PANTALLA
+        print('📦 DATOS A ENVIAR A SIGUIENTE PANTALLA:');
+        print('══════════════════════════════════════════════');
+        print('rif: $rifCompleto');
+        print('empresa: $empresa');
+        print('empresaId: $empresaId');
+        print('sucursales: $sucursales');
+        print('sucursales.length: ${sucursales?.length}');
+        print('══════════════════════════════════════════════');
 
-        if (sucursales != null) {
-          if (sucursales is List) {
-            print('📊 CANTIDAD DE SUCURSALES: ${sucursales.length}');
+        if (sucursales != null && sucursales is List) {
+          // REDIRECCIONAR SEGÚN LA CANTIDAD DE SUCURSALES
+          if (sucursales.length == 1) {
+            print('➡️ REDIRIGIENDO A LOGIN (1 sucursal)');
+            print('📤 ARGUMENTOS PARA LOGIN:');
+            print({
+              'rif': rifCompleto,
+              'empresa': empresa,
+              'empresaId': empresaId,
+              'sucursales': sucursales,
+              'sucursalSeleccionada': sucursales[0],
+            });
 
-            for (int i = 0; i < sucursales.length; i++) {
+            Navigator.pushNamed(
+              context,
+              '/login',
+              arguments: {
+                'rif': rifCompleto,
+                'empresa': empresa,
+                'empresaId': empresaId,
+                'sucursales': sucursales,
+                'sucursalSeleccionada': sucursales[0],
+              },
+            );
+          } else if (sucursales.length > 1) {
+            print(
+              '➡️ REDIRIGIENDO A BRANCHES (${sucursales.length} sucursales)',
+            );
+            print('📤 ARGUMENTOS PARA BRANCHES:');
+            print({
+              'rif': rifCompleto,
+              'empresa': empresa,
+              'empresaId': empresaId,
+              'sucursales': sucursales,
+            });
 
-              // Imprimir cada propiedad de la sucursal
-              final sucursal = sucursales[i] as Map<String, dynamic>;
-              sucursal.forEach((key, value) {
+            final sucursalSeleccionada = await Navigator.pushNamed(
+              context,
+              '/branches',
+              arguments: {
+                'rif': rifCompleto,
+                'empresa': empresa,
+                'empresaId': empresaId,
+                'sucursales': sucursales,
+              },
+            );
 
+            print('🔙 REGRESO DE BRANCHES CON:');
+            print('sucursalSeleccionada: $sucursalSeleccionada');
+
+            if (sucursalSeleccionada != null && mounted) {
+              print('➡️ REDIRIGIENDO A LOGIN DESPUÉS DE SELECCIÓN');
+              print('📤 ARGUMENTOS PARA LOGIN:');
+              print({
+                'rif': rifCompleto,
+                'empresa': empresa,
+                'empresaId': empresaId,
+                'sucursales': sucursales,
+                'sucursalSeleccionada': sucursalSeleccionada,
               });
-            }
 
-
-            // REDIRECCIONAR SEGÚN LA CANTIDAD DE SUCURSALES
-            if (sucursales.length == 1) {
-              // Si solo hay una sucursal, ir directamente al login
-            
               Navigator.pushNamed(
                 context,
                 '/login',
                 arguments: {
                   'rif': rifCompleto,
                   'empresa': empresa,
-                  'sucursales': sucursales, // Enviamos la lista con 1 elemento
-                },
-              );
-            } else if (sucursales.length > 1) {
-              // Si hay múltiples sucursales, mostrar la pantalla de selección
-
-              Navigator.pushNamed(
-                context,
-                '/branches',
-                arguments: {
-                  'rif': rifCompleto,
-                  'empresa': empresa,
+                  'empresaId': empresaId,
                   'sucursales': sucursales,
+                  'sucursalSeleccionada': sucursalSeleccionada,
                 },
               );
-            } else {
-
-              _mostrarError('Esta empresa no tiene sucursales registradas');
             }
           } else {
-            print(
-              '⚠️ sucursales NO es una lista, es: ${sucursales.runtimeType}',
-            );
-
-            _mostrarError('Formato de datos incorrecto');
+            _mostrarError('Esta empresa no tiene sucursales registradas');
           }
         } else {
-
-          _mostrarError('Esta empresa no tiene sucursales registradas');
+          _mostrarError('Formato de datos incorrecto');
         }
       } else {
-
         if (resultado['codigo'] == 404) {
           _mostrarError('RIF no encontrado. Verifique los datos.');
         } else {
           _mostrarError(resultado['error'] ?? 'Error al validar el RIF');
         }
       }
-    } catch (e, stackTrace) {
-
+    } catch (e) {
+      print('❌ ERROR en _onContinue: $e');
       if (!mounted) return;
       _mostrarError('Error de conexión. Intente nuevamente.');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
       }
-
     }
   }
-
+  
 void _mostrarError(String mensaje) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

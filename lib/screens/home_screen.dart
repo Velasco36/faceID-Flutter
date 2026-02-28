@@ -6,7 +6,8 @@ import 'history_screen.dart';
 import 'navigation_footer.dart';
 import '../services/api_service.dart';
 import '../services/session_service.dart';
-import './auth/login_screen.dart';
+
+import 'company/session_company.dart';
 import './animate/FaceScanAnimation.dart';
 
 final ApiService _apiService = ApiService();
@@ -52,7 +53,7 @@ Future<void> _cargarDatosUsuario() async {
       setState(() => _isLoading = false);
     }
   }
-  
+
   Future<void> _logout() async {
     print('🚪 [HomeScreen] Iniciando proceso de logout...');
 
@@ -96,7 +97,7 @@ Future<void> _cargarDatosUsuario() async {
       if (mounted) {
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          MaterialPageRoute(builder: (_) => const SessionCompany()),
           (route) => false,
         );
 
@@ -119,7 +120,7 @@ Future<void> _cargarDatosUsuario() async {
       if (mounted) {
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          MaterialPageRoute(builder: (_) => const SessionCompany()),
           (route) => false,
         );
 

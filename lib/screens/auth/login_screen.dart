@@ -1,7 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../services/session_service.dart';
-// ─── LOGIN SCREEN ─────────────────────────────────────────────────────────────
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -21,7 +21,81 @@ class _LoginScreenState extends State<LoginScreen> {
   final _api = ApiService();
 
   static const Color _primary = Color(0xFF137FEC);
-  static const Color _bgLight = Color(0xFFF6F7F8);
+
+  // Variables para almacenar los datos recibidos
+  String? _rif;
+  Map<String, dynamic>? _empresa;
+  int? _empresaId;
+  List<dynamic>? _sucursales;
+  Map<String, dynamic>? _sucursalSeleccionada;
+
+  @override
+  void initState() {
+    super.initState();
+    // Recibir argumentos cuando se inicializa la pantalla
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final args = ModalRoute.of(context)?.settings.arguments;
+      if (args != null && args is Map<String, dynamic>) {
+        try {
+          setState(() {
+            _rif = args['rif'];
+            _empresaId = args['empresaId'];
+
+            // ✅ CORREGIDO: Manejar empresa correctamente
+            final empresaValue = args['empresa'];
+            if (empresaValue is String) {
+              // Si es un String simple, crear un mapa con ese nombre
+              _empresa = {'nombre': empresaValue};
+            } else if (empresaValue is Map) {
+              // Si ya es un mapa, usarlo directamente
+              _empresa = empresaValue as Map<String, dynamic>;
+            } else {
+              _empresa = {'nombre': 'Empresa'};
+            }
+
+            // ✅ Manejar sucursales - puede ser List o String JSON
+            if (args['sucursales'] is String) {
+              _sucursales = jsonDecode(args['sucursales']);
+            } else {
+              _sucursales = args['sucursales'];
+            }
+
+            // ✅ Manejar sucursal seleccionada
+            if (args['sucursalSeleccionada'] != null) {
+              if (args['sucursalSeleccionada'] is String) {
+                _sucursalSeleccionada = jsonDecode(
+                  args['sucursalSeleccionada'],
+                );
+              } else {
+                _sucursalSeleccionada = args['sucursalSeleccionada'];
+              }
+            }
+          });
+
+          // 👀 IMPRIMIR LOS DATOS RECIBIDOS
+          _imprimirDatosRecibidos();
+        } catch (e) {
+          print('❌ Error parseando argumentos: $e');
+        }
+      } else {
+        print('⚠️ No se recibieron argumentos en LoginScreen');
+      }
+    });
+  }
+
+  void _imprimirDatosRecibidos() {
+    print('══════════════════════════════════════════════');
+    print('📱 DATOS RECIBIDOS EN LOGIN SCREEN');
+    print('══════════════════════════════════════════════');
+    print('🔹 RIF: $_rif');
+    print('🔹 Empresa ID: $_empresaId');
+    print('🔹 Empresa: $_empresa');
+    print('🔹 Empresa nombre: ${_empresa?['nombre']}');
+    print('🔹 Sucursales: $_sucursales');
+    print('🔹 Sucursales length: ${_sucursales?.length}');
+    print('🔹 Sucursal Seleccionada: $_sucursalSeleccionada');
+    print('══════════════════════════════════════════════');
+  }
 
   @override
   void dispose() {
@@ -32,20 +106,95 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // Validar que tenemos el ID de la empresa
+    if (_empresaId == null) {
+      _mostrarError('Error: No se recibió el ID de la empresa');
+      return;
+    }
+
+    // 👀 VERIFICAR SUCURSALES
+    print('🔍 VERIFICANDO SUCURSALES:');
+    print('══════════════════════════════════════════════');
+    print('_sucursales: $_sucursales');
+    print('_sucursales.runtimeType: ${_sucursales.runtimeType}');
+
+    if (_sucursales != null) {
+      print('_sucursales.length: ${_sucursales!.length}');
+      if (_sucursales!.isNotEmpty) {
+        print('Primera sucursal: ${_sucursales!.first}');
+        print('Primera sucursal id: ${(_sucursales!.first as Map)['id']}');
+        print(
+          'Primera sucursal nombre: ${(_sucursales!.first as Map)['nombre']}',
+        );
+      }
+    } else {
+      print('_sucursales es NULL');
+    }
+    print('══════════════════════════════════════════════');
+
+    // Si no hay sucursal seleccionada, usar la primera de la lista
+    if (_sucursalSeleccionada == null) {
+      if (_sucursales != null && _sucursales!.isNotEmpty) {
+        setState(() {
+          _sucursalSeleccionada = _sucursales!.first as Map<String, dynamic>;
+        });
+        print(
+          '✅ Usando primera sucursal automáticamente: ${_sucursalSeleccionada!['nombre']}',
+        );
+      } else {
+        _mostrarError('Error: No hay sucursales disponibles');
+        return;
+      }
+    }
+
     setState(() => _isLoading = true);
+
+    // Obtener IDs
+    int? empresaId = _empresaId;
+    int? sucursalId = _sucursalSeleccionada?['id'];
+
+    // Validar IDs
+    if (empresaId == null) {
+      setState(() => _isLoading = false);
+      _mostrarError('Error: No se pudo obtener el ID de la empresa');
+      return;
+    }
+
+    if (sucursalId == null) {
+      setState(() => _isLoading = false);
+      _mostrarError('Error: No se pudo obtener el ID de la sucursal');
+      return;
+    }
+
+    print('📤 Enviando login con:');
+    print('   • Usuario: ${_usernameController.text.trim()}');
+    print('   • empresa_id: $empresaId');
+    print('   • sucursal_id: $sucursalId');
+    print('   • Sucursal: ${_sucursalSeleccionada!['nombre']}');
 
     final result = await _api.login(
       username: _usernameController.text.trim(),
       password: _passwordController.text,
+      empresaId: empresaId,
+      sucursalId: sucursalId,
     );
 
     setState(() => _isLoading = false);
     if (!mounted) return;
 
     if (result['exito'] == true) {
-     await SessionService.saveSession(
-        usuario: result['data']['usuario'], // ✅ sin token
+      // Guardar en sesión después del login exitoso
+      await SessionService.saveSession(
+        usuario: result['data']['usuario'] ?? result['data'],
+        token: result['data']['token'],
+        rif: _rif,
+        empresa: _empresa,
+        sucursales: _sucursales,
+        sucursalSeleccionada: _sucursalSeleccionada,
       );
+
+      // Mostrar mensaje de éxito
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Row(
@@ -62,25 +211,29 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       );
+
+      // Redirigir a home
       Navigator.pushReplacementNamed(context, '/home');
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.error_rounded, color: Colors.white),
-              const SizedBox(width: 10),
-              Expanded(child: Text(result['error'] ?? 'Error desconocido')),
-            ],
-          ),
-          backgroundColor: Colors.red.shade600,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
+      _mostrarError(result['error'] ?? 'Error desconocido');
     }
+  }
+
+  void _mostrarError(String mensaje) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.error_rounded, color: Colors.white),
+            const SizedBox(width: 10),
+            Expanded(child: Text(mensaje)),
+          ],
+        ),
+        backgroundColor: Colors.red.shade600,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
   }
 
   @override
@@ -108,18 +261,74 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 440),
               child: Container(
-
                 padding: const EdgeInsets.all(28),
                 child: Form(
                   key: _formKey,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // ── Hero Icon ──────────────────────────────────
+                      // Información de la empresa (solo informativo)
+                      if (_empresa != null) ...[
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: _primary.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.business,
+                                    size: 16,
+                                    color: _primary,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      '${_empresa!['nombre'] ?? 'Empresa'}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: _primary,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (_sucursalSeleccionada != null) ...[
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.store,
+                                      size: 14,
+                                      color: _primary.withOpacity(0.7),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Sucursal: ${_sucursalSeleccionada!['nombre'] ?? 'Sin nombre'}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[700],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
+
+                      // Hero Icon
                       Container(
                         width: 88,
                         height: 88,
@@ -154,13 +363,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 32),
 
-                      // ── Username ───────────────────────────────────
+                      // Username
                       TextFormField(
                         controller: _usernameController,
                         textInputAction: TextInputAction.next,
-                        style: const TextStyle(
-                          color: Colors.black87,
-                        ),
+                        style: const TextStyle(color: Colors.black87),
                         decoration: _floatingLabelInputDecoration(
                           label: 'Nombre de usuario',
                           hint: 'Ej. usuario123',
@@ -175,15 +382,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 20),
 
-                      // ── Password ───────────────────────────────────
+                      // Password
                       TextFormField(
                         controller: _passwordController,
                         obscureText: _obscurePassword,
                         textInputAction: TextInputAction.done,
                         onFieldSubmitted: (_) => _submit(),
-                        style: const TextStyle(
-                          color: Colors.black87,
-                        ),
+                        style: const TextStyle(color: Colors.black87),
                         decoration: _floatingLabelInputDecoration(
                           label: 'Contraseña',
                           hint: 'Ingresa tu contraseña',
@@ -197,7 +402,8 @@ class _LoginScreenState extends State<LoginScreen> {
                               size: 20,
                             ),
                             onPressed: () => setState(
-                                () => _obscurePassword = !_obscurePassword),
+                              () => _obscurePassword = !_obscurePassword,
+                            ),
                           ),
                         ),
                         validator: (v) {
@@ -209,7 +415,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 28),
 
-                      // ── Login Button ──────────────────────────────
+                      // Login Button
                       SizedBox(
                         width: double.infinity,
                         height: 54,
@@ -223,7 +429,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             elevation: 4,
-                            shadowColor: _primary.withOpacity(0.35),
                           ),
                           child: _isLoading
                               ? const SizedBox(
@@ -239,19 +444,21 @@ class _LoginScreenState extends State<LoginScreen> {
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w700,
-                                    letterSpacing: 0.3,
                                   ),
                                 ),
                         ),
                       ),
                       const SizedBox(height: 24),
 
-                      // ── Security Badge ─────────────────────────────
+                      // Security Badge
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.shield_rounded,
-                              size: 14, color: Colors.black38),
+                          Icon(
+                            Icons.shield_rounded,
+                            size: 14,
+                            color: Colors.black38,
+                          ),
                           const SizedBox(width: 6),
                           Text(
                             'CONEXIÓN ENCRIPTADA AES-256',
@@ -260,39 +467,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               letterSpacing: 1.2,
                               fontWeight: FontWeight.w600,
                               color: Colors.black38,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      Divider(
-                        color: Colors.black.withOpacity(0.07),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // ── Footer ─────────────────────────────────────
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            '¿No tienes una cuenta?',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.black54,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          GestureDetector(
-                            onTap: () {
-                              Navigator.pushReplacementNamed(context, '/register');
-                            },
-                            child: const Text(
-                              'Regístrate aquí',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: _primary,
-                              ),
                             ),
                           ),
                         ],
@@ -317,20 +491,9 @@ class _LoginScreenState extends State<LoginScreen> {
     return InputDecoration(
       labelText: label,
       hintText: hint,
-      labelStyle: TextStyle(
-        color: Colors.grey[600],
-        fontSize: 14,
-        fontWeight: FontWeight.w500,
-      ),
-      floatingLabelStyle: const TextStyle(
-        color: _primary,
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-      ),
-      hintStyle: TextStyle(
-        color: Colors.black38,
-        fontSize: 14,
-      ),
+      labelStyle: TextStyle(color: Colors.grey[600], fontSize: 14),
+      floatingLabelStyle: const TextStyle(color: _primary, fontSize: 14),
+      hintStyle: TextStyle(color: Colors.black38, fontSize: 14),
       prefixIcon: Icon(icon, color: Colors.grey, size: 20),
       suffixIcon: suffixIcon,
       filled: true,
@@ -338,27 +501,15 @@ class _LoginScreenState extends State<LoginScreen> {
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide(
-          color: Colors.black12,
-        ),
+        borderSide: BorderSide(color: Colors.black12),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide(
-          color: Colors.black12,
-        ),
+        borderSide: BorderSide(color: Colors.black12),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(color: Color(0xFF137FEC), width: 1.8),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Colors.redAccent),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Colors.redAccent, width: 1.8),
       ),
     );
   }

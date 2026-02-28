@@ -53,6 +53,7 @@ class _SucursalesScreenState extends State<SucursalesScreen> {
   // Datos recibidos de la pantalla anterior
   String? _rif;
   dynamic _empresa;
+  int? _empresaId;
   List<dynamic>? _sucursalesData;
 
   // Lista de sucursales procesada
@@ -72,6 +73,7 @@ class _SucursalesScreenState extends State<SucursalesScreen> {
       _rif = args['rif'] as String?;
       _empresa = args['empresa'];
       _sucursalesData = args['sucursales'] as List<dynamic>?;
+      _empresaId = args['empresaId'] as int?;
 
       print('📥 SucursalesScreen - Datos recibidos:');
       print('RIF: $_rif');
@@ -164,9 +166,12 @@ class _SucursalesScreenState extends State<SucursalesScreen> {
     });
   }
 
-  void _navegarALogin(Branch sucursalSeleccionada) {
-    print('✅ Sucursal seleccionada: ${sucursalSeleccionada.name}');
+void _navegarALogin(Branch sucursalSeleccionada) {
+  
     print('📦 Datos completos: ${sucursalSeleccionada.rawData}');
+
+    // Crear una lista con la sucursal seleccionada
+    List<Map<String, dynamic>> sucursalesList = [sucursalSeleccionada.rawData];
 
     Navigator.pushNamed(
       context,
@@ -174,11 +179,13 @@ class _SucursalesScreenState extends State<SucursalesScreen> {
       arguments: {
         'rif': _rif,
         'empresa': _empresa,
-        'sucursal': sucursalSeleccionada.rawData,
+        'empresaId': _empresaId,
+        'sucursales': sucursalesList, // 👈 Enviamos como lista
+        'sucursalSeleccionada':
+            sucursalSeleccionada.rawData, // 👈 Y también la seleccionada
       },
     );
   }
-
   List<Branch> get _filteredBranches {
     if (_searchQuery.isEmpty) return _branches;
     return _branches
