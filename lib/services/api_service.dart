@@ -1,6 +1,9 @@
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import './session_service.dart';
+import 'package:flutter/foundation.dart'; // ← para debugPrint
+
 
 class ApiService {
   // ⚠️ Cambia esta IP por la IP de tu PC donde corre Flask
@@ -24,14 +27,21 @@ class ApiService {
   // ─────────────────────────────────────────
   // REGISTRAR PERSONA
   // ─────────────────────────────────────────
-  Future<Map<String, dynamic>> registrarPersona({
+
+Future<Map<String, dynamic>> registrarPersona({
     required String cedula,
     required String nombre,
     required String imagenPath,
   }) async {
     try {
-      final uri = Uri.parse('$baseUrl/registrar');
+      final uri = Uri.parse('$baseUrl/api/registrar');
       final request = http.MultipartRequest('POST', uri);
+
+      // ✅ Token de autorización
+      final token = await SessionService.getToken();
+      if (token != null) {
+        request.headers['Authorization'] = 'Bearer $token';
+      }
 
       request.fields['cedula'] = cedula;
       request.fields['nombre'] = nombre;
@@ -43,14 +53,22 @@ class ApiService {
         const Duration(seconds: 30),
       );
       final response = await http.Response.fromStream(streamedResponse);
+
+      debugPrint('📤 POST /api/personas/registrar → ${response.statusCode}');
+      debugPrint('📥 Body: ${response.body}');
+
       final data = jsonDecode(response.body);
 
-      if (response.statusCode == 201) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
         return {'exito': true, 'data': data};
+      } else if (response.statusCode == 401) {
+        return {'exito': false, 'error': 'Sesión expirada. Vuelve a iniciar sesión.'};
+      } else if (response.statusCode == 404) {
+        return {'exito': false, 'error': 'Endpoint no encontrado. Verifica la URL del servidor.'};
       } else {
         return {
           'exito': false,
-          'error': data['error'] ?? 'Error desconocido',
+          'error': data['error'] ?? data['mensaje'] ?? 'Error desconocido',
           'detalles': data['detalles'],
         };
       }
@@ -59,10 +77,9 @@ class ApiService {
         'exito': false,
         'error': 'No se pudo conectar al servidor. Verifica la IP y que Flask esté corriendo.',
       };
-    } on Exception catch (e) {
-      return {'exito': false, 'error': 'Error: ${e.toString()}'};
     }
-  }
+
+}
 
   // ─────────────────────────────────────────
   // VERIFICAR IDENTIDAD (contra toda la BD)
@@ -293,29 +310,22 @@ class ApiService {
   // LOGIN DE USUARIO
   // ─────────────────────────────────────────
 
-Future<Map<String, dynamic>> login({
+  Future<Map<String, dynamic>> login({
     required String username,
     required String password,
-    int? empresaId, // 👈 NUEVO PARÁMETRO
-    int? sucursalId, // 👈 NUEVO PARÁMETRO
+    int? empresaId,
+    int? sucursalId,
   }) async {
     try {
       final uri = Uri.parse('$baseUrl/api/auth/login');
 
-      // ✅ PRIMERO: Construir el body con los parámetros
-      Map<String, dynamic> body = {'username': username, 'password': password};
+      final Map<String, dynamic> body = {
+        'username': username,
+        'password': password,
+      };
 
-      // ✅ DESPUÉS: Agregar empresa_id solo si no es null
-      if (empresaId != null) {
-        body['empresa_id'] = empresaId;
-      }
-
-      // ✅ DESPUÉS: Agregar sucursal_id solo si no es null
-      if (sucursalId != null) {
-        body['sucursal_id'] = sucursalId;
-      }
-
-      print('📤 Enviando login request: $body');
+      if (empresaId != null) body['empresa_id'] = empresaId;
+      if (sucursalId != null) body['sucursal_id'] = sucursalId;
 
       final response = await http
           .post(
@@ -326,10 +336,17 @@ Future<Map<String, dynamic>> login({
           .timeout(const Duration(seconds: 30));
 
       final data = jsonDecode(response.body);
-      print('📥 Respuesta login: $data');
 
       if (response.statusCode == 200) {
-        return {'exito': true, 'data': data};
+        // ✅ Normalizar: el backend retorna "access_token" → lo mapeamos a "token"
+        return {
+          'exito': true,
+          'data': {
+            'token': data['access_token'], // ← normalizado
+            'usuario': data['usuario'],
+            'sucursal': data['sucursal'],
+          },
+        };
       } else {
         return {
           'exito': false,
@@ -339,11 +356,8 @@ Future<Map<String, dynamic>> login({
       }
     } on SocketException {
       return {'exito': false, 'error': 'No se pudo conectar al servidor.'};
-    } on Exception catch (e) {
-      return {'exito': false, 'error': 'Error: ${e.toString()}'};
     }
   }
-
 
   // ──────────────────────────────────────t───
   // Logout DE USUARIO

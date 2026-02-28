@@ -146,13 +146,17 @@ class _LoginScreenState extends State<LoginScreen> {
       // ✅ Le dice al sistema que guarde las credenciales
       _triggerAutofillSave();
 
-      await SessionService.saveSession(
-        usuario: result['data']['usuario'] ?? result['data'],
-        token: result['data']['token'],
+      final data = result['data'] as Map<String, dynamic>;
+
+        await SessionService.saveSession(
+        usuario: data['usuario'] as Map<String, dynamic>,
+        token: data['token'] as String?, // ← ya normalizado en ApiService
         rif: _rif,
         empresa: _empresa,
         sucursales: _sucursales,
-        sucursalSeleccionada: _sucursalSeleccionada,
+        sucursalSeleccionada:
+            (data['sucursal'] as Map<String, dynamic>?) ??
+            _sucursalSeleccionada,
       );
 
       ScaffoldMessenger.of(context).showSnackBar(

@@ -25,17 +25,14 @@ class _RegisterScreenState extends State<RegisterScreen>
   String? _mensajeExito;
   XFile? _fotoCapturada;
 
-  // Control de detecciones consecutivas
   int _consecutiveDetections = 0;
   int _consecutiveNoDetections = 0;
   static const int _requiredDetections = 5;
   static const int _requiredNoDetections = 3;
 
-  // Control de cámara
   int _cameraIndex = 0;
   bool _isBackCamera = true;
 
-  // Control de formulario
   final TextEditingController _nombreController = TextEditingController();
   final TextEditingController _cedulaController = TextEditingController();
   String _tipoCedula = 'V';
@@ -44,7 +41,6 @@ class _RegisterScreenState extends State<RegisterScreen>
   final FaceDetectorService _faceDetector = FaceDetectorService();
   final ApiService _apiService = ApiService();
 
-  // Control de pausa
   bool _isPaused = false;
   bool _isDisposed = false;
   bool _isInitializing = false;
@@ -59,8 +55,6 @@ class _RegisterScreenState extends State<RegisterScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) async {
     if (_isDisposed) return;
-
-    print('Lifecycle state changed to: $state');
 
     if (state == AppLifecycleState.paused) {
       _isPaused = true;
@@ -86,23 +80,16 @@ class _RegisterScreenState extends State<RegisterScreen>
 
   Future<void> _initializeCamera() async {
     if (_isDisposed || _isInitializing || _isPaused) return;
-
     _isInitializing = true;
 
     try {
       await _controller?.dispose();
 
-      if (_cameraIndex >= cameras.length) {
-        _cameraIndex = 0;
-      }
-
-      print(
-        'Inicializando cámara: ${_cameraIndex == 0 ? "Trasera" : "Frontal"}',
-      );
+      if (_cameraIndex >= cameras.length) _cameraIndex = 0;
 
       _controller = CameraController(
         cameras[_cameraIndex],
-        ResolutionPreset.high, // Cambiado a high para mejor calidad
+        ResolutionPreset.high,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.nv21,
       );
@@ -114,13 +101,10 @@ class _RegisterScreenState extends State<RegisterScreen>
         return;
       }
 
-      setState(() {
-        _isCameraInitialized = true;
-      });
+      setState(() => _isCameraInitialized = true);
 
       await Future.delayed(const Duration(milliseconds: 300));
 
-      // Solo iniciar el stream si no estamos mostrando formulario ni foto capturada
       if (mounted &&
           !_isDisposed &&
           !_isPaused &&
@@ -130,11 +114,9 @@ class _RegisterScreenState extends State<RegisterScreen>
         _iniciarStream();
       }
     } catch (e) {
-      print('Error inicializando cámara: $e');
+      debugPrint('Error inicializando cámara: $e');
       if (mounted && !_isDisposed && !_isPaused) {
-        setState(() {
-          _isCameraInitialized = false;
-        });
+        setState(() => _isCameraInitialized = false);
       }
     } finally {
       _isInitializing = false;
@@ -142,11 +124,8 @@ class _RegisterScreenState extends State<RegisterScreen>
   }
 
   Future<void> _cambiarCamara() async {
-    if (cameras.length < 2 || _isDisposed || _isPaused || _registrando) {
-      return;
-    }
+    if (cameras.length < 2 || _isDisposed || _isPaused || _registrando) return;
 
-    // Detener todo antes de cambiar
     setState(() {
       _isCameraInitialized = false;
       _processingFrame = false;
@@ -177,9 +156,7 @@ class _RegisterScreenState extends State<RegisterScreen>
         _registrando ||
         _mostrarFormulario ||
         _fotoCapturada != null ||
-        _faceDetected) {
-      return;
-    }
+        _faceDetected) return;
 
     if (_controller == null || !_controller!.value.isInitialized) return;
 
@@ -194,8 +171,8 @@ class _RegisterScreenState extends State<RegisterScreen>
             _isPaused ||
             !mounted ||
             _mostrarFormulario ||
-            _fotoCapturada != null)
-          return;
+            _fotoCapturada != null) return;
+
         _processingFrame = true;
 
         bool detected = false;
@@ -205,7 +182,7 @@ class _RegisterScreenState extends State<RegisterScreen>
             cameras[_cameraIndex],
           );
         } catch (e) {
-          print('Error en detección: $e');
+          debugPrint('Error en detección: $e');
         }
 
         if (detected) {
@@ -227,7 +204,6 @@ class _RegisterScreenState extends State<RegisterScreen>
           }
         } else {
           _consecutiveNoDetections++;
-
           if (_consecutiveNoDetections >= _requiredNoDetections) {
             _consecutiveDetections = 0;
           }
@@ -236,7 +212,7 @@ class _RegisterScreenState extends State<RegisterScreen>
         _processingFrame = false;
       });
     } catch (e) {
-      print('Error iniciando stream: $e');
+      debugPrint('Error iniciando stream: $e');
       _streamActivo = false;
     }
   }
@@ -251,14 +227,13 @@ class _RegisterScreenState extends State<RegisterScreen>
         await _controller!.stopImageStream();
       }
     } catch (e) {
-      print('Error deteniendo stream: $e');
+      debugPrint('Error deteniendo stream: $e');
     }
   }
 
   Future<void> _stopStreamAndShowForm() async {
     try {
       await _detenerStream();
-
       await Future.delayed(const Duration(milliseconds: 500));
 
       if (!mounted || _isDisposed || _isPaused) return;
@@ -274,23 +249,19 @@ class _RegisterScreenState extends State<RegisterScreen>
         _mostrarFormulario = true;
       });
     } catch (e) {
-      print('Error capturando foto: $e');
+      debugPrint('Error capturando foto: $e');
       _reiniciarEscaneo();
     }
   }
 
   Future<void> _registrarUsuario() async {
     if (_nombreController.text.isEmpty || _cedulaController.text.isEmpty) {
-      setState(() {
-        _errorMensaje = 'Completa todos los campos';
-      });
+      setState(() => _errorMensaje = 'Completa todos los campos');
       return;
     }
 
     if (!RegExp(r'^[0-9]+$').hasMatch(_cedulaController.text)) {
-      setState(() {
-        _errorMensaje = 'La cédula debe contener solo números';
-      });
+      setState(() => _errorMensaje = 'La cédula debe contener solo números');
       return;
     }
 
@@ -317,9 +288,7 @@ class _RegisterScreenState extends State<RegisterScreen>
         });
 
         Future.delayed(const Duration(seconds: 2), () {
-          if (mounted && !_isDisposed) {
-            Navigator.pop(context);
-          }
+          if (mounted && !_isDisposed) Navigator.pop(context);
         });
       } else {
         setState(() {
@@ -328,7 +297,7 @@ class _RegisterScreenState extends State<RegisterScreen>
         });
       }
     } catch (e) {
-      print('Error en registro: $e');
+      debugPrint('Error en registro: $e');
       if (mounted && !_isDisposed) {
         setState(() {
           _registrando = false;
@@ -358,11 +327,6 @@ class _RegisterScreenState extends State<RegisterScreen>
   }
 
   bool _mostrarBotonCamara() {
-    // El botón se muestra siempre que:
-    // 1. No esté registrando
-    // 2. La cámara esté inicializada
-    // 3. No esté en pausa
-    // 4. Tengamos más de 1 cámara disponible
     return !_registrando &&
         _isCameraInitialized &&
         !_isPaused &&
@@ -381,8 +345,6 @@ class _RegisterScreenState extends State<RegisterScreen>
     super.dispose();
   }
 
-  // ============ MÉTODOS CORREGIDOS PARA LA CÁMARA ============
-
   Widget _buildCameraBackground() {
     if (_fotoCapturada != null) {
       return Image.file(File(_fotoCapturada!.path), fit: BoxFit.cover);
@@ -393,24 +355,15 @@ class _RegisterScreenState extends State<RegisterScreen>
     }
 
     try {
-      // Obtener el tamaño de la pantalla
       final size = MediaQuery.of(context).size;
-
-      // Calcular la escala para que la cámara ocupe toda la pantalla
-      // sin distorsionarse
       var scale = size.aspectRatio / _controller!.value.aspectRatio;
-
-      // Si la escala es menor que 1, significa que la pantalla es más alargada
-      // que la cámara, entonces necesitamos recortar los lados
-      if (scale < 1) {
-        scale = 1 / scale;
-      }
+      if (scale < 1) scale = 1 / scale;
 
       return ClipRect(
         child: OverflowBox(
           alignment: Alignment.center,
           child: FittedBox(
-            fit: BoxFit.fitHeight, // Cambiado a fitHeight para mejor ajuste
+            fit: BoxFit.fitHeight,
             child: SizedBox(
               width: size.width,
               height: size.width * _controller!.value.aspectRatio,
@@ -420,35 +373,10 @@ class _RegisterScreenState extends State<RegisterScreen>
         ),
       );
     } catch (e) {
-      print('Error mostrando preview: $e');
+      debugPrint('Error mostrando preview: $e');
       return Container(color: Colors.black);
     }
   }
-
-  // Método alternativo más simple si el anterior no funciona bien
-  Widget _buildCameraBackgroundAlternativo() {
-    if (_fotoCapturada != null) {
-      return Image.file(File(_fotoCapturada!.path), fit: BoxFit.cover);
-    }
-
-    if (_controller == null || !_controller!.value.isInitialized) {
-      return Container(color: Colors.black);
-    }
-
-    try {
-      return Center(
-        child: AspectRatio(
-          aspectRatio: _controller!.value.aspectRatio,
-          child: CameraPreview(_controller!),
-        ),
-      );
-    } catch (e) {
-      print('Error mostrando preview: $e');
-      return Container(color: Colors.black);
-    }
-  }
-
-  // ============ FIN DE MÉTODOS CORREGIDOS ============
 
   @override
   Widget build(BuildContext context) {
@@ -457,17 +385,10 @@ class _RegisterScreenState extends State<RegisterScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Usar el método corregido para la cámara
+          // ── Fondo: cámara o foto capturada ──
           if (_isCameraInitialized && !_isPaused) _buildCameraBackground(),
 
-          // Overlays semitransparentes
-          if (_registrando) _buildLoadingOverlay(),
-          if (_errorMensaje != null && !_registrando && !_isPaused)
-            _buildResultadoError(),
-          if (_mensajeExito != null && !_registrando && !_isPaused)
-            _buildResultadoExito(),
-
-          // Marco de detección (solo cuando corresponde)
+          // ── Marco de detección ──
           if (_isCameraInitialized &&
               !_mostrarFormulario &&
               !_registrando &&
@@ -475,33 +396,43 @@ class _RegisterScreenState extends State<RegisterScreen>
               !_isPaused)
             _buildMarcoDeteccion(),
 
-          // Texto superior
+          // ── Texto guía superior ──
           if (_isCameraInitialized &&
               !_mostrarFormulario &&
               !_registrando &&
               !_isPaused)
             _buildTextoSuperior(),
 
-          // Formulario (cuando corresponde)
-          if (_mostrarFormulario) _buildFormulario(),
+          // ── Formulario de datos ──
+          if (_mostrarFormulario && !_registrando) _buildFormulario(),
 
-          // Botón de regresar (siempre visible)
-          Positioned(
-            top: 48,
-            left: 16,
-            child: SafeArea(
-              child: IconButton(
-                icon: const Icon(
-                  Icons.arrow_back_ios,
-                  color: Colors.white,
-                  size: 28,
+          // ── Loading overlay: SIEMPRE encima de todo ──
+          if (_registrando) _buildLoadingOverlay(),
+
+          // ── Mensajes de resultado ──
+          if (_mensajeExito != null && !_registrando && !_isPaused)
+            _buildResultadoExito(),
+          if (_errorMensaje != null && !_registrando && !_isPaused)
+            _buildResultadoError(),
+
+          // ── Botón regresar ──
+          if (!_registrando)
+            Positioned(
+              top: 48,
+              left: 16,
+              child: SafeArea(
+                child: IconButton(
+                  icon: const Icon(
+                    Icons.arrow_back_ios,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                  onPressed: () => Navigator.pop(context),
                 ),
-                onPressed: () => Navigator.pop(context),
               ),
             ),
-          ),
 
-          // Botón de cambio de cámara - SIEMPRE VISIBLE cuando corresponde
+          // ── Botón cambio de cámara ──
           if (_mostrarBotonCamara())
             Positioned(
               bottom: 48,
@@ -588,80 +519,130 @@ class _RegisterScreenState extends State<RegisterScreen>
 
   Widget _buildFormulario() {
     return Container(
-      color: Colors.black54,
-      child: Center(
+      // Fondo sólido oscuro para tapar completamente la cámara
+      color: const Color(0xFF121212),
+      child: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Foto de perfil
+              const SizedBox(height: 12),
+
+              // Header
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+                    onPressed: _reiniciarEscaneo,
+                  ),
+                  const Expanded(
+                    child: Text(
+                      'Datos del usuario',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 48), // balance del back button
+                ],
+              ),
+
+              const SizedBox(height: 24),
+
+              // Foto circular con borde de color
               Container(
-                width: 120,
-                height: 120,
+                width: 130,
+                height: 130,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
-                  image: DecorationImage(
-                    image: FileImage(File(_fotoCapturada!.path)),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF137FEC), Color(0xFF00C6FF)],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF137FEC).withOpacity(0.4),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.all(3),
+                child: ClipOval(
+                  child: Image.file(
+                    File(_fotoCapturada!.path),
                     fit: BoxFit.cover,
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
-              const Text(
-                'Completa tus datos',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 24),
 
-              // Campo de nombre
-              TextField(
-                controller: _nombreController,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  labelText: 'Nombre completo',
-                  labelStyle: const TextStyle(color: Colors.white70),
-                  enabledBorder: OutlineInputBorder(
-                    borderSide: const BorderSide(color: Colors.white30),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderSide: const BorderSide(color: Colors.blue),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  prefixIcon: const Icon(Icons.person, color: Colors.white70),
+              const SizedBox(height: 8),
+
+              // Indicador de foto OK
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.greenAccent, width: 1),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.greenAccent, size: 14),
+                    SizedBox(width: 4),
+                    Text(
+                      'Foto capturada',
+                      style: TextStyle(color: Colors.greenAccent, fontSize: 12),
+                    ),
+                  ],
                 ),
               ),
+
+              const SizedBox(height: 32),
+
+              // Campo nombre
+              _buildTextField(
+                controller: _nombreController,
+                label: 'Nombre completo',
+                icon: Icons.person_rounded,
+                textInputAction: TextInputAction.next,
+              ),
+
               const SizedBox(height: 16),
 
-              // Campo de cédula con selector V/E
+              // Fila cédula
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Selector V/E
                   Container(
-                    width: 70,
+                    width: 72,
                     height: 56,
                     decoration: BoxDecoration(
-                      border: Border.all(color: Colors.white30),
+                      color: const Color(0xFF1E1E2E),
+                      border: Border.all(color: Colors.white24),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
                         value: _tipoCedula,
-                        dropdownColor: Colors.grey.shade900,
+                        dropdownColor: const Color(0xFF1E1E2E),
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 16,
+                          fontSize: 18,
                           fontWeight: FontWeight.bold,
                         ),
                         icon: const Icon(
                           Icons.arrow_drop_down,
-                          color: Colors.white70,
+                          color: Colors.white54,
+                          size: 20,
                         ),
                         isExpanded: true,
                         alignment: AlignmentDirectional.center,
@@ -669,63 +650,76 @@ class _RegisterScreenState extends State<RegisterScreen>
                           DropdownMenuItem(
                             value: 'V',
                             alignment: AlignmentDirectional.center,
-                            child: Text('V', textAlign: TextAlign.center),
+                            child: Text('V'),
                           ),
                           DropdownMenuItem(
                             value: 'E',
                             alignment: AlignmentDirectional.center,
-                            child: Text('E', textAlign: TextAlign.center),
+                            child: Text('E'),
                           ),
                         ],
-                        onChanged: (String? newValue) {
-                          if (newValue != null) {
-                            setState(() {
-                              _tipoCedula = newValue;
-                            });
-                          }
+                        onChanged: (v) {
+                          if (v != null) setState(() => _tipoCedula = v);
                         },
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
-
-                  // Campo de número de cédula
+                  const SizedBox(width: 10),
                   Expanded(
-                    child: TextField(
+                    child: _buildTextField(
                       controller: _cedulaController,
-                      style: const TextStyle(color: Colors.white),
+                      label: 'Número de cédula',
+                      icon: Icons.badge_rounded,
                       keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: 'Número de cédula',
-                        labelStyle: const TextStyle(color: Colors.white70),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Colors.white30),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: const BorderSide(color: Colors.blue),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        prefixIcon: const Icon(
-                          Icons.badge,
-                          color: Colors.white70,
-                        ),
-                      ),
+                      textInputAction: TextInputAction.done,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 24),
+
+              // Error inline
+              if (_errorMensaje != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.redAccent.withOpacity(0.5)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline,
+                          color: Colors.redAccent, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _errorMensaje!,
+                          style: const TextStyle(
+                            color: Colors.redAccent,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 32),
 
               // Botones
               Row(
                 children: [
                   Expanded(
-                    child: ElevatedButton(
+                    child: OutlinedButton(
                       onPressed: _reiniciarEscaneo,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.grey.shade800,
-                        foregroundColor: Colors.white,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white70,
+                        side: const BorderSide(color: Colors.white30),
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -736,21 +730,35 @@ class _RegisterScreenState extends State<RegisterScreen>
                   ),
                   const SizedBox(width: 12),
                   Expanded(
+                    flex: 2,
                     child: ElevatedButton(
                       onPressed: _registrarUsuario,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
+                        backgroundColor: const Color(0xFF137FEC),
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
+                        elevation: 4,
                       ),
-                      child: const Text('Registrar'),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.how_to_reg_rounded, size: 20),
+                          SizedBox(width: 8),
+                          Text(
+                            'Registrar',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
               ),
+
+              const SizedBox(height: 24),
             ],
           ),
         ),
@@ -758,24 +766,87 @@ class _RegisterScreenState extends State<RegisterScreen>
     );
   }
 
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    TextInputType keyboardType = TextInputType.text,
+    TextInputAction textInputAction = TextInputAction.next,
+  }) {
+    return TextField(
+      controller: controller,
+      style: const TextStyle(color: Colors.white),
+      keyboardType: keyboardType,
+      textInputAction: textInputAction,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.white54),
+        filled: true,
+        fillColor: const Color(0xFF1E1E2E),
+        prefixIcon: Icon(icon, color: Colors.white38, size: 20),
+        enabledBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: Colors.white24),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: Color(0xFF137FEC), width: 1.8),
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
+  }
+
+  // ── Loading overlay: cubre TODO incluyendo el formulario ──
   Widget _buildLoadingOverlay() {
     return Container(
-      color: Colors.black54,
-      child: const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
-            SizedBox(height: 20),
-            Text(
-              'Registrando usuario...',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w500,
-              ),
+      color: Colors.black87,
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 36),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A1A2E),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: const Color(0xFF137FEC).withOpacity(0.4),
+              width: 1.5,
             ),
-          ],
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF137FEC).withOpacity(0.15),
+                blurRadius: 30,
+                spreadRadius: 5,
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Spinner con borde azul
+              SizedBox(
+                width: 60,
+                height: 60,
+                child: CircularProgressIndicator(
+                  color: const Color(0xFF137FEC),
+                  backgroundColor: const Color(0xFF137FEC).withOpacity(0.15),
+                  strokeWidth: 4,
+                ),
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'Registrando usuario',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Por favor espera...',
+                style: TextStyle(color: Colors.white54, fontSize: 14),
+              ),
+            ],
+          ),
         ),
       ),
     );
