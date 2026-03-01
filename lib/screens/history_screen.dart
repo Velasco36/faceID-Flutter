@@ -1,554 +1,803 @@
-// history_screen.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'navigation_footer.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../services/api_service.dart';
-import 'filters_widget.dart';
-import 'detail_person.dart';
-import 'search_filter.dart';
 
-class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key});
+class MovimientosScreen extends StatefulWidget {
+  const MovimientosScreen({super.key});
 
   @override
-  State<HistoryScreen> createState() => _HistoryScreenState();
+  State<MovimientosScreen> createState() => _MovimientosScreenState();
 }
 
-class _HistoryScreenState extends State<HistoryScreen> {
-  final ApiService _apiService = ApiService();
-  List<dynamic> _movimientos = [];
-  Map<String, dynamic>? _paginacion;
-  bool _isLoading = true;
-  bool _hasError = false;
-  String _errorMessage = '';
-  String _selectedFilter = 'Todos';
+class _MovimientosScreenState extends State<MovimientosScreen> {
+  final ApiService _api = ApiService();
+  final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
 
-  // Filtros de fecha
-  DateTime? _fechaInicio;
-  DateTime? _fechaFin;
+  List<Map<String, dynamic>> _movimientos = [];
+  List<Map<String, dynamic>> _sucursales = [];
+
+  int _paginaActual = 1;
+  bool _cargando = false;
+  bool _cargandoMas = false;
+  bool _tieneSiguiente = true;
+  String? _error;
+
+  // Filtros
+  String? _sucursalId;
+  String? _tipo;
+  String _busqueda = '';
+  Timer? _debounce;
+
+  // ── Colores ──
+  static const Color _primary = Color(0xFF137FEC);
+  static const Color _green = Color(0xFF10B981);
+  static const Color _rose = Color(0xFFF43F5E);
+  static const Color _bgPage = Color(0xFFF6F7F8);
+  static const Color _border = Color(0xFFE8ECF0);
 
   @override
   void initState() {
     super.initState();
-    _cargarDatos();
+    _cargarSucursales();
+    _cargarMovimientos(reiniciar: true);
+
+    _scrollController.addListener(() {
+      if (_scrollController.position.pixels >=
+          _scrollController.position.maxScrollExtent - 200) {
+        _cargarMas();
+      }
+    });
+
+    _searchController.addListener(() {
+      _debounce?.cancel();
+      _debounce = Timer(const Duration(milliseconds: 400), () {
+        if (_busqueda != _searchController.text) {
+          _busqueda = _searchController.text;
+          _cargarMovimientos(reiniciar: true);
+        }
+      });
+    });
   }
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _searchController.dispose();
+    _debounce?.cancel();
     super.dispose();
   }
 
-  Future<void> _cargarDatos() async {
-    setState(() {
-      _isLoading = true;
-      _hasError = false;
-    });
-
-    try {
-      final result = await _apiService.obtenerEstadisticas();
-
-      if (result['exito']) {
-        setState(() {
-          _movimientos = result['data']['movimientos'] ?? [];
-          _paginacion = result['data']['paginacion'];
-          _isLoading = false;
-        });
-      } else {
-        setState(() {
-          _hasError = true;
-          _errorMessage = result['error'] ?? 'Error al cargar datos';
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
+  Future<void> _cargarSucursales() async {
+    final r = await _api.listarSucursales();
+    if (r['exito'] == true && mounted) {
       setState(() {
-        _hasError = true;
-        _errorMessage = 'Error: ${e.toString()}';
-        _isLoading = false;
+        _sucursales = List<Map<String, dynamic>>.from(
+          r['data']['sucursales'] ?? [],
+        );
       });
     }
   }
 
-  void _showFilterDialog() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      isScrollControlled: true,
-      builder: (context) {
-        return FiltersWidget(
-          selectedFilter: _selectedFilter,
-          fechaInicio: _fechaInicio,
-          fechaFin: _fechaFin,
-          onApplyFilters: (filter, inicio, fin) {
-            setState(() {
-              _selectedFilter = filter;
-              _fechaInicio = inicio;
-              _fechaFin = fin;
-            });
-            _aplicarFiltros();
-          },
-        );
-      },
-    );
-  }
+  Future<void> _cargarMovimientos({bool reiniciar = false}) async {
+    if (_cargando || _cargandoMas) return;
 
-  void _aplicarFiltros() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Filtro aplicado: $_selectedFilter'),
-        duration: const Duration(seconds: 1),
-      ),
-    );
-  }
+    if (reiniciar) {
+      setState(() {
+        _cargando = true;
+        _error = null;
+        _paginaActual = 1;
+        _tieneSiguiente = true;
+      });
+    } else {
+      setState(() {
+        _cargandoMas = true;
+      });
+    }
 
-  String _formatFecha(String? fechaStr) {
-    if (fechaStr == null) return 'Fecha no disponible';
-    try {
-      final fecha = DateTime.parse(fechaStr);
-      return '${fecha.day}/${fecha.month}/${fecha.year}';
-    } catch (e) {
-      return fechaStr;
+    final r = await _api.listarMovimientos(
+      page: reiniciar ? 1 : _paginaActual,
+      perPage: 10,
+      sucursalId: _sucursalId,
+      tipo: _tipo,
+      cedula: _busqueda.isNotEmpty ? _busqueda : null,
+    );
+
+    if (!mounted) return;
+
+    if (r['exito'] == true) {
+      final data = r['data'];
+      final nuevos = List<Map<String, dynamic>>.from(data['movimientos'] ?? []);
+      final pag = data['paginacion'];
+      setState(() {
+        if (reiniciar) {
+          _movimientos = nuevos;
+        } else {
+          _movimientos.addAll(nuevos);
+        }
+        _paginaActual = (pag['pagina_actual'] as int) + 1;
+        _tieneSiguiente = pag['tiene_siguiente'] ?? false;
+        _cargando = false;
+        _cargandoMas = false;
+      });
+    } else {
+      setState(() {
+        _error = r['error'];
+        _cargando = false;
+        _cargandoMas = false;
+      });
     }
   }
 
-  String _formatHora(String? fechaStr) {
-    if (fechaStr == null) return '';
+  Future<void> _cargarMas() async {
+    if (!_tieneSiguiente || _cargandoMas || _cargando) return;
+    await _cargarMovimientos(reiniciar: false);
+  }
+
+  void _seleccionarSucursal(String? id) {
+    setState(() => _sucursalId = id);
+    _cargarMovimientos(reiniciar: true);
+  }
+
+  void _seleccionarTipo(String? t) {
+    setState(() => _tipo = t);
+    _cargarMovimientos(reiniciar: true);
+  }
+
+  // ── Agrupa movimientos por fecha ──
+  Map<String, List<Map<String, dynamic>>> _agruparPorFecha() {
+    final grupos = <String, List<Map<String, dynamic>>>{};
+    for (final m in _movimientos) {
+      final key = _labelFecha(m['fecha_hora'] ?? '');
+      grupos.putIfAbsent(key, () => []).add(m);
+    }
+    return grupos;
+  }
+
+  String _labelFecha(String raw) {
     try {
-      final fecha = DateTime.parse(fechaStr);
-      return '${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}';
-    } catch (e) {
-      return '';
+      final dt = DateTime.parse(raw).toLocal();
+      final hoy = DateTime.now();
+      final ayer = DateTime(hoy.year, hoy.month, hoy.day - 1);
+      final d = DateTime(dt.year, dt.month, dt.day);
+      if (d == DateTime(hoy.year, hoy.month, hoy.day)) {
+        return 'Hoy, ${_diaConMes(dt)}';
+      }
+      if (d == ayer) return 'Ayer, ${_diaConMes(dt)}';
+      return _diaConMes(dt);
+    } catch (_) {
+      return raw;
+    }
+  }
+
+  String _diaConMes(DateTime dt) {
+    const meses = [
+      'Ene',
+      'Feb',
+      'Mar',
+      'Abr',
+      'May',
+      'Jun',
+      'Jul',
+      'Ago',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dic',
+    ];
+    return '${dt.day} de ${meses[dt.month - 1]}';
+  }
+
+  String _hora(String raw) {
+    try {
+      final dt = DateTime.parse(raw).toLocal();
+      final h = dt.hour;
+      final m = dt.minute.toString().padLeft(2, '0');
+      final ampm = h >= 12 ? 'PM' : 'AM';
+      final h12 = h % 12 == 0 ? 12 : h % 12;
+      return '$h12:$m $ampm';
+    } catch (_) {
+      return raw;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = const Color(0xFF137FEC);
-    final backgroundColor = const Color(0xFFF6F7F8);
-    final secondaryTextColor = const Color(0xFF617589);
-
     return Scaffold(
-      backgroundColor: backgroundColor,
-      appBar: AppBar(
-        backgroundColor: Colors.white.withOpacity(0.8),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back,
-            color: Color(0xFF111418),
-          ), // Cambiado a arrow_back para mejor UX
-          onPressed: () {
-            Navigator.pop(context);
-          },
+      backgroundColor: _bgPage,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildHeader(),
+            _buildSearch(),
+            _buildSucursalesChips(),
+            Expanded(child: _buildLista()),
+          ],
         ),
-        title: const Text(
-          'Historial de Movimientos',
-          style: TextStyle(
-            color: Color(0xFF111418),
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list, color: Color(0xFF111418)),
-            onPressed: _showFilterDialog,
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Color(0xFF111418)),
-            onPressed: _cargarDatos,
-          ),
-        ],
       ),
-      body: Column(
+    );
+  }
+
+  // ── Header ──
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+      child: Row(
         children: [
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    // Resumen
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFF0F2F4)),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Total de movimientos',
-                                style: TextStyle(
-                                  color: Color(0xFF617589),
-                                  fontSize: 14,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${_paginacion?['total'] ?? 0}',
-                                style: TextStyle(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                  color: primaryColor,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: primaryColor.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Icon(
-                              Icons.history,
-                              color: primaryColor,
-                              size: 32,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // 🔍 INPUT DE BÚSQUEDA INTEGRADO
-                    const SearchFilter(),
-
-                    const SizedBox(height: 16),
-
-                    // Filtro activo
-                    if (_selectedFilter != 'Todos' || _fechaInicio != null)
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: primaryColor.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.filter_list,
-                              size: 16,
-                              color: primaryColor,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Filtro activo: $_selectedFilter',
-                              style: TextStyle(
-                                color: primaryColor,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  _selectedFilter = 'Todos';
-                                  _fechaInicio = null;
-                                  _fechaFin = null;
-                                });
-                                _aplicarFiltros();
-                              },
-                              child: Icon(
-                                Icons.close,
-                                size: 16,
-                                color: primaryColor,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                    const SizedBox(height: 8),
-
-                    // Loading indicator
-                    if (_isLoading)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(20),
-                           child: CircularProgressIndicator(
-                            color: Colors.blue,
-                            strokeWidth: 2.5,
-                          ),
-                        ),
-                      )
-                    else if (_hasError)
-                      Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Column(
-                            children: [
-                              Icon(
-                                Icons.error_outline,
-                                size: 48,
-                                color: Colors.red[300],
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                _errorMessage,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(color: secondaryTextColor),
-                              ),
-                              const SizedBox(height: 12),
-                              ElevatedButton(
-                                onPressed: _cargarDatos,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: primaryColor,
-                                ),
-                                child: const Text('Reintentar'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    else if (_movimientos.isEmpty)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(20),
-                          child: Column(
-                            children: [
-                              Icon(
-                                Icons.history,
-                                size: 64,
-                                color: Color(0xFF617589),
-                              ),
-                              SizedBox(height: 16),
-                              Text(
-                                'No hay movimientos registrados',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Color(0xFF617589),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    else
-                      // History List
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _movimientos.length,
-                        itemBuilder: (context, index) {
-                          final movimiento = _movimientos[index];
-                          return _buildHistoryItem(
-                            movimiento: movimiento,
-                            primaryColor: primaryColor,
-                            secondaryTextColor: secondaryTextColor,
-                          );
-                        },
-                      ),
-                  ],
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: _primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.face_6_rounded, color: _primary, size: 22),
+          ),
+          const SizedBox(width: 10),
+          const Text(
+            'Historial',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          const Spacer(),
+          GestureDetector(
+            onTap: () => _showTipoSheet(),
+            child: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: _tipo != null ? _primary.withOpacity(0.1) : Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: _tipo != null ? _primary.withOpacity(0.3) : _border,
                 ),
+              ),
+              child: Icon(
+                Icons.filter_list_rounded,
+                color: _tipo != null ? _primary : const Color(0xFF64748B),
+                size: 20,
               ),
             ),
           ),
-
-          // Navigation Footer - AHORA FUERA DEL PADDING Y EXPANDED
-          NavigationFooter(
-            currentIndex: 1,
-            onItemTapped: (index) {
-              if (index == 0) {
-                Navigator.pop(context);
-              }
-            },
-            primaryColor: primaryColor,
-            secondaryTextColor: secondaryTextColor,
-          ),
-
-          const SizedBox(height: 8), // Pequeño espacio al final
         ],
       ),
     );
   }
 
-  Widget _buildHistoryItem({
-    required Map<String, dynamic> movimiento,
-    required Color primaryColor,
-    required Color secondaryTextColor,
+  // ── Buscador ──
+  Widget _buildSearch() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      child: Container(
+        height: 44,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _border),
+        ),
+        child: Row(
+          children: [
+            const SizedBox(width: 12),
+            const Icon(
+              Icons.search_rounded,
+              color: Color(0xFF94A3B8),
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: _searchController,
+                style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
+                decoration: const InputDecoration(
+                  hintText: 'Buscar por nombre o cédula',
+                  hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+                  border: InputBorder.none,
+                  isDense: true,
+                ),
+              ),
+            ),
+            if (_searchController.text.isNotEmpty)
+              GestureDetector(
+                onTap: () {
+                  _searchController.clear();
+                  _busqueda = '';
+                  _cargarMovimientos(reiniciar: true);
+                },
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 10),
+                  child: Icon(
+                    Icons.close_rounded,
+                    color: Color(0xFF94A3B8),
+                    size: 18,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Chips de sucursales ──
+  Widget _buildSucursalesChips() {
+    return SizedBox(
+      height: 52,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        children: [
+          _buildChip(
+            label: 'Todas',
+            seleccionado: _sucursalId == null,
+            onTap: () => _seleccionarSucursal(null),
+          ),
+          ..._sucursales.map(
+            (s) => _buildChip(
+              label: s['nombre'] ?? '',
+              seleccionado: _sucursalId == s['id'].toString(),
+              onTap: () => _seleccionarSucursal(s['id'].toString()),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChip({
+    required String label,
+    required bool seleccionado,
+    required VoidCallback onTap,
   }) {
-    final isEntrada = movimiento['tipo'] == 'entrada';
-    final nombre = movimiento['nombre_persona'] ?? 'Desconocido';
-    final cedula = movimiento['cedula'] ?? 'N/A';
-    final fecha = _formatFecha(movimiento['fecha_hora']);
-    final hora = _formatHora(movimiento['fecha_hora']);
-    final tieneImagen = movimiento['imagen_path'] != null;
-    final observacion = movimiento['observacion'];
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: seleccionado ? _primary : Colors.white,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: seleccionado ? _primary : _border),
+          boxShadow: seleccionado
+              ? [
+                  BoxShadow(
+                    color: _primary.withOpacity(0.25),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : [],
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: seleccionado ? Colors.white : const Color(0xFF64748B),
+              letterSpacing: 0.1,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Lista agrupada por fecha ──
+  Widget _buildLista() {
+    if (_cargando) {
+      return const Center(
+        child: CircularProgressIndicator(color: _primary, strokeWidth: 2.5),
+      );
+    }
+
+    if (_error != null && _movimientos.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.wifi_off_rounded,
+              color: Color(0xFFCBD5E1),
+              size: 44,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _error!,
+              style: const TextStyle(color: Color(0xFF64748B), fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            GestureDetector(
+              onTap: () => _cargarMovimientos(reiniciar: true),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: _primary,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'Reintentar',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_movimientos.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.inbox_rounded, color: Color(0xFFCBD5E1), size: 44),
+            SizedBox(height: 12),
+            Text(
+              'Sin movimientos',
+              style: TextStyle(
+                color: Color(0xFF94A3B8),
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            SizedBox(height: 4),
+            Text(
+              'No hay registros con los filtros aplicados',
+              style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 12),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final grupos = _agruparPorFecha();
+    final fechas = grupos.keys.toList();
+
+    final items = <_ListItem>[];
+    for (final fecha in fechas) {
+      items.add(_ListItem(isHeader: true, fecha: fecha));
+      for (final m in grupos[fecha]!) {
+        items.add(_ListItem(isHeader: false, movimiento: m));
+      }
+    }
+    if (_tieneSiguiente) items.add(_ListItem(isHeader: false, isLoader: true));
+
+    return RefreshIndicator(
+      color: _primary,
+      onRefresh: () => _cargarMovimientos(reiniciar: true),
+      child: ListView.builder(
+        controller: _scrollController,
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
+        itemCount: items.length,
+        itemBuilder: (ctx, i) {
+          final item = items[i];
+          if (item.isLoader) return _buildLoaderItem();
+          if (item.isHeader) return _buildDateHeader(item.fecha!);
+          return _buildCard(item.movimiento!);
+        },
+      ),
+    );
+  }
+
+  Widget _buildDateHeader(String fecha) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 20, bottom: 10),
+      child: Row(
+        children: [
+          Text(
+            fecha.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
+              color: Color(0xFF94A3B8),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Container(height: 1, color: _border)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCard(Map<String, dynamic> m) {
+    final esEntrada = m['tipo'] == 'entrada';
+    final badgeColor = esEntrada ? _green : _rose;
+
+    // ✅ CORREGIDO: campo correcto de la API
+    final nombre = m['nombre_persona'] ?? '—';
+    final cedula = m['cedula'] ?? '';
+    final hora = _hora(m['fecha_hora'] ?? '');
+    final sucursal = m['sucursal_nombre'] ?? '';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFF0F2F4)),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    DetailPersonScreen(movimiento: movimiento),
-              ),
-            );
-          },
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            // Avatar con badge SVG
+            Stack(
+              clipBehavior: Clip.none,
               children: [
-                // Avatar/Icon
                 Container(
                   width: 48,
                   height: 48,
-                  decoration: BoxDecoration(
-                    color: isEntrada
-                        ? Colors.green.withOpacity(0.1)
-                        : Colors.orange.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    isEntrada ? Icons.login : Icons.logout,
-                    color: isEntrada ? Colors.green : Colors.orange,
-                    size: 28,
+
+                  child: Padding(
+                    padding: const EdgeInsets.all(0),
+                    child: SvgPicture.asset(
+                      'assets/icons/operator.svg',
+
+                    ),
                   ),
                 ),
-                const SizedBox(width: 16),
-
-                // Details
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        nombre,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF111418),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Cédula: $cedula',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: secondaryTextColor,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.calendar_today,
-                            size: 12,
-                            color: secondaryTextColor,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            fecha,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: secondaryTextColor,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Icon(
-                            Icons.access_time,
-                            size: 12,
-                            color: secondaryTextColor,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            hora,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: secondaryTextColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (observacion != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            observacion,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: secondaryTextColor.withOpacity(0.8),
-                              fontStyle: FontStyle.italic,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-
-                // Status
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isEntrada
-                            ? Colors.green.withOpacity(0.1)
-                            : Colors.orange.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        isEntrada ? 'Entrada' : 'Salida',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: isEntrada ? Colors.green : Colors.orange,
-                          fontWeight: FontWeight.bold,
+                // ✅ CORREGIDO: ícono SVG desde assets
+                Positioned(
+                  bottom: -2,
+                  right: -2,
+                  child: Container(
+                    width: 18,
+                    height: 18,
+                    decoration: BoxDecoration(
+                      color: badgeColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(3),
+                      child: SvgPicture.asset(
+                        'assets/icons/operator.svg',
+                        colorFilter: const ColorFilter.mode(
+                          Colors.white,
+                          BlendMode.srcIn,
                         ),
                       ),
                     ),
-                    if (tieneImagen)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Icon(Icons.image, size: 14, color: primaryColor),
-                      ),
-                    const SizedBox(height: 4),
-                    Icon(
-                      Icons.chevron_right,
-                      color: secondaryTextColor,
-                      size: 20,
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),
+            const SizedBox(width: 12),
+
+            // Nombre + cédula + sede
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    nombre,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'C.I. $cedula',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF94A3B8),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  if (sucursal.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.store_rounded,
+                          size: 10,
+                          color: Color(0xFFCBD5E1),
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          sucursal,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Color(0xFFCBD5E1),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            // Hora + tipo
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  hora,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  esEntrada ? 'Entrada' : 'Salida',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: badgeColor,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoaderItem() {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 20),
+      child: Center(
+        child: SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(color: _primary, strokeWidth: 2),
+        ),
+      ),
+    );
+  }
+
+  // ── Bottom sheet filtro tipo ──
+  void _showTipoSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: _border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Filtrar por tipo',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildTipoOption(
+              null,
+              'Todos los movimientos',
+              Icons.swap_vert_rounded,
+              const Color(0xFF64748B),
+            ),
+            const SizedBox(height: 8),
+            _buildTipoOption(
+              'entrada',
+              'Solo entradas',
+              Icons.login_rounded,
+              _green,
+            ),
+            const SizedBox(height: 8),
+            _buildTipoOption(
+              'salida',
+              'Solo salidas',
+              Icons.logout_rounded,
+              _rose,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTipoOption(
+    String? valor,
+    String label,
+    IconData icon,
+    Color color,
+  ) {
+    final seleccionado = _tipo == valor;
+    return GestureDetector(
+      onTap: () {
+        Navigator.pop(context);
+        _seleccionarTipo(valor);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: seleccionado
+              ? color.withOpacity(0.08)
+              : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: seleccionado ? color.withOpacity(0.3) : _border,
           ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 17),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: seleccionado ? color : const Color(0xFF0F172A),
+              ),
+            ),
+            const Spacer(),
+            if (seleccionado)
+              Icon(Icons.check_circle_rounded, color: color, size: 18),
+          ],
         ),
       ),
     );
   }
 }
 
+// Helper para aplanar grupos en ListView
+class _ListItem {
+  final bool isHeader;
+  final bool isLoader;
+  final String? fecha;
+  final Map<String, dynamic>? movimiento;
+
+  const _ListItem({
+    required this.isHeader,
+    this.fecha,
+    this.movimiento,
+    this.isLoader = false,
+  });
+}

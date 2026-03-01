@@ -45,7 +45,8 @@ dependencies:
   flutter_launcher_icons: ^0.13.1
   cupertino_icons: ^1.0.8
   flutter_native_splash: ^2.4.0
-  
+  flutter_svg: ^2.0.0
+
 
 dev_dependencies:
   flutter_test:
@@ -66,6 +67,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/logo.png
+    - assets/icons/operator.svg
     - assets/animations/face_scan.json
   # To add assets to your application, add an assets section, like this:
   # assets:

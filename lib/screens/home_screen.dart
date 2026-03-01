@@ -421,7 +421,7 @@ Future<void> _cargarDatosUsuario() async {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const HistoryScreen(),
+                      builder: (context) => const MovimientosScreen(),
                     ),
                   );
                 }

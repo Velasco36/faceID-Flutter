@@ -140,7 +140,7 @@ Future<Map<String, dynamic>> registrarPersona({
       }
     } on SocketException {
       return {'exito': false, 'error': 'No se pudo conectar al servidor.'};
-    } 
+    }
   }
   // ─────────────────────────────────────────
   // VERIFICAR CONTRA UNA CÉDULA ESPECÍFICA
@@ -250,32 +250,94 @@ Future<Map<String, dynamic>> registrarPersona({
   }
 
 
-    // ─────────────────────────────────────────
-  // OBTENER ESTADÍSTICAS DE MOVIMIENTOS
+
+  // LISTAR MOVIMIENTOS — paginado infinito
   // ─────────────────────────────────────────
-  Future<Map<String, dynamic>> obtenerEstadisticas() async {
+  Future<Map<String, dynamic>> listarMovimientos({
+    int page = 1,
+    int perPage = 10,
+    String? sucursalId,
+    String? tipo,
+    String? cedula,
+    String? fechaInicio,
+    String? fechaFin,
+  }) async {
     try {
+      final params = <String, String>{
+        'page': page.toString(),
+        'per_page': perPage.toString(),
+        if (sucursalId != null) 'sucursal_id': sucursalId,
+        if (tipo != null) 'tipo': tipo,
+        if (cedula != null) 'cedula': cedula,
+        if (fechaInicio != null) 'fecha_inicio': fechaInicio,
+        if (fechaFin != null) 'fecha_fin': fechaFin,
+      };
+
+      final uri = Uri.parse(
+        '$baseUrl/api/movimientos',
+      ).replace(queryParameters: params);
+      final token = await SessionService.getToken();
+
       final response = await http
-          .get(Uri.parse('$baseUrl/movimientos'))
-          .timeout(const Duration(seconds: 10));
+          .get(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              if (token != null) 'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(const Duration(seconds: 30));
+
+      debugPrint('📤 GET /api/movimientos?page=$page → ${response.statusCode}');
 
       final data = jsonDecode(response.body);
 
       if (response.statusCode == 200) {
         return {'exito': true, 'data': data};
-      } else {
+      } else if (response.statusCode == 401) {
         return {
           'exito': false,
-          'error': data['error'] ?? 'Error al obtener estadísticas',
+          'error': 'Sesión expirada. Vuelve a iniciar sesión.',
         };
+      } else {
+        return {'exito': false, 'error': data['error'] ?? 'Error desconocido'};
       }
     } on SocketException {
       return {'exito': false, 'error': 'No se pudo conectar al servidor.'};
-    } on Exception catch (e) {
-      return {'exito': false, 'error': 'Error: ${e.toString()}'};
     }
   }
 
+  // ─────────────────────────────────────────
+  // LISTAR SUCURSALES
+  // ─────────────────────────────────────────
+  Future<Map<String, dynamic>> listarSucursales() async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/sucursales');
+      final token = await SessionService.getToken();
+
+      final response = await http
+          .get(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              if (token != null) 'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'exito': true, 'data': data};
+      } else if (response.statusCode == 401) {
+        return {'exito': false, 'error': 'Sesión expirada.'};
+      } else {
+        return {'exito': false, 'error': data['error'] ?? 'Error desconocido'};
+      }
+    } on SocketException {
+      return {'exito': false, 'error': 'No se pudo conectar al servidor.'};
+    } 
+  }
 
   // ─────────────────────────────────────────
   // HEALTH CHECK
