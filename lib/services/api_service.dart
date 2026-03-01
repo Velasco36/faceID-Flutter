@@ -336,9 +336,64 @@ Future<Map<String, dynamic>> registrarPersona({
       }
     } on SocketException {
       return {'exito': false, 'error': 'No se pudo conectar al servidor.'};
-    } 
+    }
   }
 
+
+  // ─────────────────────────────────────────
+  // crear SUCURSALES
+  // ─────────────────────────────────────────
+Future<Map<String, dynamic>> crearSucursal(
+    String nombre,
+    String direccion,
+  ) async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/sucursales');
+      final token = await SessionService.getToken();
+
+      final response = await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              if (token != null) 'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({'nombre': nombre, 'direccion': direccion}),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return {'exito': true, 'data': data};
+      } else if (response.statusCode == 401) {
+        return {'exito': false, 'error': 'Sesión expirada.'};
+      } else if (response.statusCode == 400) {
+        return {'exito': false, 'error': data['error'] ?? 'Datos inválidos'};
+      } else if (response.statusCode == 409) {
+        return {
+          'exito': false,
+          'error': data['error'] ?? 'La sucursal ya existe',
+        };
+      } else {
+        return {
+          'exito': false,
+          'error': data['error'] ?? 'Error al crear sucursal',
+        };
+      }
+    } on SocketException {
+      return {'exito': false, 'error': 'No se pudo conectar al servidor.'};
+    } on FormatException {
+      return {
+        'exito': false,
+        'error': 'Error al procesar la respuesta del servidor.',
+      };
+    } catch (e) {
+      return {'exito': false, 'error': 'Error inesperado: $e'};
+    }
+  }
+
+  
   // ─────────────────────────────────────────
   // HEALTH CHECK
   // ─────────────────────────────────────────

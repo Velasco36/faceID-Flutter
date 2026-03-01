@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'custom_tab_bar.dart';
 import './screens/home_screen.dart';
 import './screens/history_screen.dart';
+import './screens/brances/branches_screen.dart';
 import 'screens/company/session_company.dart';
 import 'services/session_service.dart';
 
@@ -45,7 +46,10 @@ Future<void> _cargarRol() async {
   List<Widget> get _screens => [
     const HomeScreen(), // tab 0 - Inicio
     const MovimientosScreen(), // tab 1 - Historial
-    const SessionCompany(), // tab 2 - Empresa
+  
+    const SucursalesScreen(), // tab 3 - Sucursales
+
+
   ];
 
   @override

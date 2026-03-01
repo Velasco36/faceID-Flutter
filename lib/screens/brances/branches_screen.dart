@@ -1,41 +1,7 @@
 import 'package:flutter/material.dart';
-import 'dart:convert';
-
-void main() {
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Sucursales',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF137FEC)),
-        useMaterial3: true,
-        fontFamily: 'Roboto',
-      ),
-      home: const SucursalesScreen(),
-    );
-  }
-}
-
-class Branch {
-  final String name;
-  final String address;
-  final IconData icon;
-  final Map<String, dynamic> rawData;
-
-  const Branch({
-    required this.name,
-    required this.address,
-    required this.icon,
-    required this.rawData,
-  });
-}
+import '../../services/api_service.dart';
+import './create_branch_screen.dart';
+import './edit_branch_screen.dart';
 
 class SucursalesScreen extends StatefulWidget {
   const SucursalesScreen({super.key});
@@ -47,395 +13,302 @@ class SucursalesScreen extends StatefulWidget {
 class _SucursalesScreenState extends State<SucursalesScreen> {
   static const Color _primary = Color(0xFF137FEC);
 
-  final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = '';
+  final ApiService _apiService = ApiService();
 
-  // Datos recibidos de la pantalla anterior
+  bool _isLoading = false;
+  String? _errorMessage;
+  List<Map<String, dynamic>> _sucursales = [];
+
   String? _rif;
   dynamic _empresa;
   int? _empresaId;
-  List<dynamic>? _sucursalesData;
 
-  // Lista de sucursales procesada
-  List<Branch> _branches = [];
-
-  // Índice de la sucursal seleccionada
-  int? _selectedIndex;
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-
-    // Recibir argumentos
     final args = ModalRoute.of(context)?.settings.arguments as Map?;
 
-    if (args != null) {
+    if (args != null && _sucursales.isEmpty) {
       _rif = args['rif'] as String?;
       _empresa = args['empresa'];
-      _sucursalesData = args['sucursales'] as List<dynamic>?;
       _empresaId = args['empresaId'] as int?;
+    }
 
-      print('📥 SucursalesScreen - Datos recibidos:');
-      print('RIF: $_rif');
-      print('Empresa: $_empresa');
-      print('Tipo de empresa: ${_empresa.runtimeType}');
-      print('Sucursales: $_sucursalesData');
+    _cargarSucursales();
+  }
 
-      // Procesar las sucursales
-      _procesarSucursales();
+  // ── API ───────────────────────────────────────────────────────────────────
+
+  Future<void> _cargarSucursales() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    final resultado = await _apiService.listarSucursales();
+
+    if (!mounted) return;
+
+    if (resultado['exito'] == true) {
+      final data = resultado['data'];
+      List<dynamic> lista = [];
+
+      if (data is List) {
+        lista = data;
+      } else if (data is Map && data.containsKey('sucursales')) {
+        lista = data['sucursales'] as List<dynamic>;
+      }
+
+      print('✅ Sucursales recibidas: ${lista.length}');
+      for (var s in lista) {
+        print('📦 $s');
+      }
+
+      setState(() {
+        _sucursales = lista.cast<Map<String, dynamic>>();
+        _isLoading = false;
+      });
+    } else {
+      print('❌ Error: ${resultado['error']}');
+      setState(() {
+        _errorMessage = resultado['error'];
+        _isLoading = false;
+      });
     }
   }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   String _getNombreEmpresa() {
-    if (_empresa == null) return 'Corporación Global';
-
+    if (_empresa == null) return 'Empresa';
     if (_empresa is Map) {
       return _empresa['nombre'] ??
-             _empresa['name'] ??
-             _empresa['razon_social'] ??
-             'Corporación Global';
+          _empresa['name'] ??
+          _empresa['razon_social'] ??
+          'Empresa';
     }
-
-    if (_empresa is String) {
-      return _empresa;
-    }
-
-    return 'Corporación Global';
+    if (_empresa is String) return _empresa as String;
+    return 'Empresa';
   }
 
-  void _procesarSucursales() {
-    if (_sucursalesData == null) return;
+  // ── Navigation ────────────────────────────────────────────────────────────
 
-    setState(() {
-      _branches = _sucursalesData!.map((sucursal) {
-        final nombre =
-            sucursal['nombre'] ??
-            sucursal['name'] ??
-            sucursal['descripcion'] ??
-            'Sucursal sin nombre';
-
-        final direccion =
-            sucursal['direccion'] ??
-            sucursal['address'] ??
-            sucursal['ubicacion'] ??
-            'Dirección no disponible';
-
-        IconData icono;
-        if (nombre.toLowerCase().contains('principal') ||
-            nombre.toLowerCase().contains('central')) {
-          icono = Icons.location_on_outlined;
-        } else if (nombre.toLowerCase().contains('norte')) {
-          icono = Icons.north_outlined;
-        } else if (nombre.toLowerCase().contains('sur')) {
-          icono = Icons.south_outlined;
-        } else if (nombre.toLowerCase().contains('este')) {
-          icono = Icons.east_outlined;
-        } else if (nombre.toLowerCase().contains('oeste')) {
-          icono = Icons.west_outlined;
-        } else {
-          icono = Icons.storefront_outlined;
-        }
-
-        return Branch(
-          name: nombre,
-          address: direccion,
-          icon: icono,
-          rawData: sucursal as Map<String, dynamic>,
-        );
-      }).toList();
-
-      print('✅ Sucursales procesadas: ${_branches.length}');
-      for (var i = 0; i < _branches.length; i++) {
-        print(
-          'Sucursal ${i + 1}: ${_branches[i].name} - ${_branches[i].address}',
-        );
-      }
-    });
-  }
-
-  void _seleccionarSucursal(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-
-    // Pequeña pausa para que se vea la selección (opcional)
-    Future.delayed(const Duration(milliseconds: 150), () {
-      if (mounted) {
-        _navegarALogin(_branches[index]);
-      }
-    });
-  }
-
-void _navegarALogin(Branch sucursalSeleccionada) {
-  
-    print('📦 Datos completos: ${sucursalSeleccionada.rawData}');
-
-    // Crear una lista con la sucursal seleccionada
-    List<Map<String, dynamic>> sucursalesList = [sucursalSeleccionada.rawData];
-
-    Navigator.pushNamed(
+  void _navegarAEditar(Map<String, dynamic> sucursal) {
+    Navigator.push(
       context,
-      '/login',
-      arguments: {
-        'rif': _rif,
-        'empresa': _empresa,
-        'empresaId': _empresaId,
-        'sucursales': sucursalesList, // 👈 Enviamos como lista
-        'sucursalSeleccionada':
-            sucursalSeleccionada.rawData, // 👈 Y también la seleccionada
-      },
-    );
-  }
-  List<Branch> get _filteredBranches {
-    if (_searchQuery.isEmpty) return _branches;
-    return _branches
-        .where(
-          (b) =>
-              b.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-              b.address.toLowerCase().contains(_searchQuery.toLowerCase()),
-        )
-        .toList();
+      MaterialPageRoute(
+        builder: (_) => EditBranchScreen(sucursal: sucursal),
+      ),
+    ).then((actualizado) {
+      if (actualizado == true) {
+        _cargarSucursales(); // Recargar la lista si se actualizó
+      }
+    });
   }
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _filteredBranches;
-
     return Scaffold(
-      backgroundColor: const Color.fromARGB(255, 255, 255, 255),
+      backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 448),
-          margin: EdgeInsets.symmetric(
-            horizontal: MediaQuery.of(context).size.width > 448
-                ? (MediaQuery.of(context).size.width - 448) / 2
-                : 0,
-          ),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 24,
-                spreadRadius: 0,
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              // ── Header ──
-              _buildHeader(),
-
-              // ── Content ──
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    // Title row
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Sucursales disponibles',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF0F172A),
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _primary.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              '${filtered.length} ${filtered.length == 1 ? 'sucursal' : 'sucursales'}',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: _primary,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 12),
-
-                    // Branch cards
-                    if (_branches.isEmpty)
-                      Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(32),
-                          child: Column(
-                            children: [
-                              Icon(
-                                Icons.storefront_outlined,
-                                size: 64,
-                                color: Colors.grey[400],
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'No hay sucursales disponibles',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.grey[600],
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    else
-                      ...filtered.asMap().entries.map((entry) {
-                        final originalIndex = _branches.indexOf(entry.value);
-                        final isSelected = _selectedIndex == originalIndex;
-
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _BranchCard(
-                            branch: entry.value,
-                            isSelected: isSelected,
-                            onTap: () => _seleccionarSucursal(originalIndex),
-                          ),
-                        );
-                      }),
-
-                    const SizedBox(height: 16),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.92),
-        border: const Border(
-          bottom: BorderSide(color: Color(0xFFE2E8F0), width: 1),
-        ),
-      ),
-      child: Column(
-        children: [
-          // Top bar
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
-            child: Row(
+        child: Stack(
+          children: [
+            Column(
               children: [
-                IconButton(
-                  onPressed: () => Navigator.maybePop(context),
-                  icon: const Icon(Icons.arrow_back),
-                  color: const Color(0xFF0F172A),
-                  style: IconButton.styleFrom(shape: const CircleBorder()),
-                ),
                 Expanded(
-                  child: Column(
-                    children: [
-                      Text(
-                        _getNombreEmpresa(),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F172A),
-                          letterSpacing: -0.3,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // ── Header ──
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFDBEAFD),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Icon(
+                                    Icons.store,
+                                    color: _primary,
+                                    size: 22,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _sucursales.isNotEmpty
+                                          ? (_sucursales
+                                                    .first['empresa_nombre'] ??
+                                                'Empresa')
+                                          : _getNombreEmpresa(),
+                                      style: const TextStyle(
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1F2937),
+                                      ),
+                                    ),
+                                    const Text(
+                                      'Sucursales',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Color(0xFF9CA3AF),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      ),
-                      if (_rif != null)
-                        Text(
-                          'RIF: $_rif',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                            fontWeight: FontWeight.w400,
+
+                        const SizedBox(height: 24),
+
+                        // ── Body ──
+                        if (_isLoading)
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.only(top: 60),
+                              child: CircularProgressIndicator(color: _primary),
+                            ),
+                          )
+                        else if (_errorMessage != null)
+                          Center(
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 60),
+                              child: Column(
+                                children: [
+                                  const Icon(
+                                    Icons.wifi_off_rounded,
+                                    size: 48,
+                                    color: Color(0xFF9CA3AF),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    _errorMessage!,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Color(0xFF6B7280),
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  TextButton.icon(
+                                    onPressed: _cargarSucursales,
+                                    icon: const Icon(
+                                      Icons.refresh,
+                                      color: _primary,
+                                    ),
+                                    label: const Text(
+                                      'Reintentar',
+                                      style: TextStyle(color: _primary),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        else if (_sucursales.isEmpty)
+                          Center(
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 60),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    Icons.storefront_outlined,
+                                    size: 56,
+                                    color: Colors.grey[400],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'No hay sucursales disponibles',
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        else
+                          ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: _sucursales.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 16),
+                            itemBuilder: (context, index) {
+                              final s = _sucursales[index];
+                              final nombre =
+                                  s['nombre'] ?? s['name'] ?? 'Sin nombre';
+                              final direccion =
+                                  s['direccion'] ??
+                                  s['address'] ??
+                                  'Sin dirección';
+
+                              return _SucursalCard(
+                                nombre: nombre,
+                                direccion: direccion,
+                                onTap: () => _navegarAEditar(s),
+                              );
+                            },
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(width: 48),
               ],
             ),
-          ),
 
-          // Search bar
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: TextField(
-              controller: _searchController,
-              onChanged: (v) => setState(() => _searchQuery = v),
-              style: const TextStyle(fontSize: 14),
-              decoration: InputDecoration(
-                hintText: 'Buscar sucursal por nombre o dirección...',
-                hintStyle: const TextStyle(
-                  color: Color(0xFF94A3B8),
-                  fontSize: 13,
-                ),
-                prefixIcon: const Icon(
-                  Icons.search,
-                  color: Color(0xFF94A3B8),
-                  size: 20,
-                ),
-                filled: true,
-                fillColor: const Color(0xFFF1F5F9),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(
-                    color: Color(0xFF137FEC),
-                    width: 2,
-                  ),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  vertical: 10,
-                  horizontal: 12,
-                ),
+            // ── FAB ──
+            Positioned(
+              bottom: 112,
+              right: 24,
+              child: FloatingActionButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const CreateBranchScreen()),
+                ).then((creado) {
+                  if (creado == true) {
+                    _cargarSucursales();
+                  }
+                }),
+                backgroundColor: _primary,
+                shape: const CircleBorder(),
+                child: const Icon(Icons.add, color: Colors.white, size: 32),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-class _BranchCard extends StatelessWidget {
-  static const Color _primary = Color(0xFF137FEC);
+// ─── Card sin icono de 3 puntos ─────────────────────────────────────────────
 
-  final Branch branch;
-  final bool isSelected;
+class _SucursalCard extends StatelessWidget {
+  final String nombre;
+  final String direccion;
   final VoidCallback onTap;
 
-  const _BranchCard({
-    required this.branch,
-    required this.isSelected,
+  const _SucursalCard({
+    required this.nombre,
+    required this.direccion,
     required this.onTap,
   });
 
@@ -443,19 +316,15 @@ class _BranchCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+      child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isSelected ? _primary.withOpacity(0.05) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? _primary : Colors.transparent,
-            width: 2,
-          ),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFF9FAFB)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.06),
+              color: Colors.black.withOpacity(0.05),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -463,69 +332,69 @@ class _BranchCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Icon container
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 48,
-              height: 48,
+            // Placeholder imagen
+            Container(
+              width: 64,
+              height: 64,
               decoration: BoxDecoration(
-                color: isSelected
-                    ? _primary.withOpacity(0.12)
-                    : const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(10),
+                color: const Color(0xFFF3F4F6),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(
-                branch.icon,
-                color: isSelected ? _primary : const Color(0xFF64748B),
-                size: 22,
+              child: const Icon(
+                Icons.storefront_outlined,
+                color: Color(0xFF9CA3AF),
+                size: 28,
               ),
             ),
-
-            const SizedBox(width: 14),
-
-            // Text
+            const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    branch.name,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF0F172A),
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                  // Nombre con icono
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.store_outlined,
+                        size: 16,
+                        color: Color(0xFF9CA3AF),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          nombre,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            color: Color(0xFF1F2937),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    branch.address,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF64748B),
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
+                  const SizedBox(height: 8),
+                  // Dirección con icono
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.location_on_outlined,
+                        size: 16,
+                        color: Color(0xFF9CA3AF),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          direccion,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF6B7280),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
-              ),
-            ),
-
-            const SizedBox(width: 12),
-
-            // Check indicator
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isSelected ? _primary : Colors.grey.shade300,
-              ),
-              child: Icon(
-                Icons.check,
-                size: 16,
-                color: isSelected ? Colors.white : Colors.transparent,
               ),
             ),
           ],

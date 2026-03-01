@@ -58,7 +58,7 @@ class CustomTabBar extends StatelessWidget {
               children: [
                 _buildItem(0, Icons.home_outlined, 'Inicio'),
                 _buildItem(1, Icons.history, 'Historial'),
-                _buildItem(2, Icons.business, 'Empresa'),
+                _buildItem(2, Icons.location_on_outlined, 'Sucursal'),
               ],
             ),
           ),

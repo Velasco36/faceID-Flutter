@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../services/api_service.dart'; // Ajusta la ruta según tu estructura
+import '../../services/api_service.dart';
 import 'dart:convert';
 
 class SessionCompany extends StatefulWidget {
@@ -80,50 +80,21 @@ void _onContinue() async {
     final rifCompleto = _formatRif();
 
     try {
-      print('🔍 ===== INICIO DE FLUJO RIF =====');
-      print('📤 Enviando solicitud de sucursales para RIF: $rifCompleto');
 
       final resultado = await _apiService.getSucursalesPorRif(rifCompleto);
 
       if (!mounted) return;
 
-      // 👀 IMPRIMIR LA RESPUESTA COMPLETA DEL API
-      print('📥 RESPUESTA COMPLETA DEL API:');
-      print('══════════════════════════════════════════════');
-      print('resultado: $resultado');
-      print('resultado["exito"]: ${resultado['exito']}');
-      print('resultado["data"]: ${resultado['data']}');
-      print('resultado["empresa"]: ${resultado['empresa']}');
-      print('resultado["empresa_id"]: ${resultado['empresa_id']}');
-      print('══════════════════════════════════════════════');
 
       if (resultado['exito']) {
         final sucursales = resultado['data'];
         final empresa = resultado['empresa'];
         final empresaId = resultado['empresa_id'];
 
-        // 👀 IMPRIMIR LO QUE VAMOS A ENVIAR A LA SIGUIENTE PANTALLA
-        print('📦 DATOS A ENVIAR A SIGUIENTE PANTALLA:');
-        print('══════════════════════════════════════════════');
-        print('rif: $rifCompleto');
-        print('empresa: $empresa');
-        print('empresaId: $empresaId');
-        print('sucursales: $sucursales');
-        print('sucursales.length: ${sucursales?.length}');
-        print('══════════════════════════════════════════════');
-
         if (sucursales != null && sucursales is List) {
           // REDIRECCIONAR SEGÚN LA CANTIDAD DE SUCURSALES
           if (sucursales.length == 1) {
-            print('➡️ REDIRIGIENDO A LOGIN (1 sucursal)');
-            print('📤 ARGUMENTOS PARA LOGIN:');
-            print({
-              'rif': rifCompleto,
-              'empresa': empresa,
-              'empresaId': empresaId,
-              'sucursales': sucursales,
-              'sucursalSeleccionada': sucursales[0],
-            });
+
 
             Navigator.pushNamed(
               context,
@@ -137,16 +108,7 @@ void _onContinue() async {
               },
             );
           } else if (sucursales.length > 1) {
-            print(
-              '➡️ REDIRIGIENDO A BRANCHES (${sucursales.length} sucursales)',
-            );
-            print('📤 ARGUMENTOS PARA BRANCHES:');
-            print({
-              'rif': rifCompleto,
-              'empresa': empresa,
-              'empresaId': empresaId,
-              'sucursales': sucursales,
-            });
+
 
             final sucursalSeleccionada = await Navigator.pushNamed(
               context,
@@ -159,19 +121,8 @@ void _onContinue() async {
               },
             );
 
-            print('🔙 REGRESO DE BRANCHES CON:');
-            print('sucursalSeleccionada: $sucursalSeleccionada');
-
             if (sucursalSeleccionada != null && mounted) {
-              print('➡️ REDIRIGIENDO A LOGIN DESPUÉS DE SELECCIÓN');
-              print('📤 ARGUMENTOS PARA LOGIN:');
-              print({
-                'rif': rifCompleto,
-                'empresa': empresa,
-                'empresaId': empresaId,
-                'sucursales': sucursales,
-                'sucursalSeleccionada': sucursalSeleccionada,
-              });
+
 
               Navigator.pushNamed(
                 context,
@@ -208,7 +159,7 @@ void _onContinue() async {
       }
     }
   }
-  
+
 void _mostrarError(String mensaje) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
