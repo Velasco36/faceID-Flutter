@@ -2,8 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 
-import 'screens/home_screen.dart';
-import 'screens/verification_screen.dart';
+import 'main_screen.dart'; // ✅ AGREGA ESTE
 import 'screens/company/session_company.dart';
 import 'screens/brances/branches_screen.dart';
 import 'screens/animate/FaceScanAnimation.dart';
@@ -49,8 +48,9 @@ class MyApp extends StatelessWidget {
       routes: {
         '/register': (context) => const RegisterScreen(),
         '/login': (context) => const LoginScreen(),
-        '/home': (context) => const HomeScreen(),
-        '/company': (context) => const SessionCompany(),
+        '/home': (context) => const MainScreen(), // ✅ antes era HomeScreen
+        '/company': (context) =>
+            const MainScreen(), // ✅ antes era SessionCompany
         '/branches': (context) => const SucursalesScreen(),
       },
     );
@@ -68,8 +68,6 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-
-    // Remueve splash nativo apenas Flutter esté listo
     FlutterNativeSplash.remove();
   }
 
@@ -77,7 +75,7 @@ class _SplashScreenState extends State<SplashScreen> {
     if (mounted) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const SessionCompany()),
+        MaterialPageRoute(builder: (_) => const MainScreen()), // ✅
       );
     }
   }
