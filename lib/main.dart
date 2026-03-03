@@ -1,15 +1,15 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
-
-import 'main_screen.dart'; // ✅ AGREGA ESTE
-import 'screens/company/session_company.dart';
-import 'screens/brances/branches_screen.dart';
-import 'screens/animate/FaceScanAnimation.dart';
-import 'screens/auth/register_user_screen.dart';
-import 'screens/auth/login_screen.dart';
-import 'screens/auth/branches_public.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
+
+import 'main_screen.dart';
+import 'screens/animate/FaceScanAnimation.dart';
+import 'screens/auth/login_screen.dart';
+import 'screens/auth/register_user_screen.dart';
+import 'screens/auth/branches_public.dart';
+import 'screens/brances/branches_screen.dart';
+import 'screens/users/users_screen.dart';
 
 List<CameraDescription> cameras = [];
 
@@ -47,17 +47,20 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
       home: const SplashScreen(),
       routes: {
-        '/register': (context) => const RegisterScreen(),
-        '/login': (context) => const LoginScreen(),
-        '/home': (context) => const MainScreen(), // ✅ antes era HomeScreen
-        '/company': (context) =>
-            const MainScreen(), // ✅ antes era SessionCompany
-        '/branches': (context) => const SucursalesScreen(),
-        '/branchesPublic': (context) => const SucursalesPublicScreen(),
+        '/login'          : (context) => const LoginScreen(),
+        '/register'       : (context) => const RegisterScreen(),
+        '/home'           : (context) => const MainScreen(),
+        '/company'        : (context) => const MainScreen(),
+        '/branches'       : (context) => const SucursalesScreen(),
+        '/branchesPublic' : (context) => const SucursalesPublicScreen(),
+        '/users'          : (context) => const UsersScreen(),
+        // /users/create NO va aqui — se abre como modal desde UsersScreen
       },
     );
   }
 }
+
+// ── Splash ───────────────────────────────────────────────────────
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -77,7 +80,7 @@ class _SplashScreenState extends State<SplashScreen> {
     if (mounted) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const MainScreen()), // ✅
+        MaterialPageRoute(builder: (_) => const MainScreen()),
       );
     }
   }

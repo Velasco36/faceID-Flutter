@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../services/api_service.dart';
+import './widgets/skeleton_loader.dart'; // ajusta la ruta
 
 class MovimientosScreen extends StatefulWidget {
   const MovimientosScreen({super.key});
@@ -389,10 +390,9 @@ class _MovimientosScreenState extends State<MovimientosScreen> {
 
   // ── Lista agrupada por fecha ──
   Widget _buildLista() {
+    // ✅ DESPUÉS
     if (_cargando) {
-      return const Center(
-        child: CircularProgressIndicator(color: _primary, strokeWidth: 2.5),
-      );
+      return const SkeletonLoader(itemCount: 6);
     }
 
     if (_error != null && _movimientos.isEmpty) {
