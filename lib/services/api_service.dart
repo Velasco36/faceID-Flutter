@@ -526,6 +526,8 @@ Future<Map<String, dynamic>> logout() async {
       return {'exito': false, 'error': 'Error: ${e.toString()}'};
     }
   }
+
+
 // ─────────────────────────────────────────
 // OBTENER SUCURSALES DE UNA EMPRESA POR RIF
 // ─────────────────────────────────────────
@@ -537,20 +539,6 @@ Future<Map<String, dynamic>> getSucursalesPorRif(String rif) async {
       final response = await http.get(uri).timeout(const Duration(seconds: 30));
 
       final data = jsonDecode(response.body);
-      print('📥 getSucursalesPorRif - Respuesta completa: $data');
-
-      // 👀 Logs de depuración
-      print('🔍 Verificando campos:');
-      print('  • data["empresa"]: ${data['empresa']}');
-      print('  • data["empresa_id"]: ${data['empresa_id']}');
-      print('  • data["sucursales"] es List? ${data['sucursales'] is List}');
-
-      if (data['sucursales'] != null && data['sucursales'] is List) {
-        print('  • Primera sucursal: ${data['sucursales'][0]}');
-        print(
-          '  • empresa_id en sucursal: ${data['sucursales'][0]['empresa_id']}',
-        );
-      }
 
       if (response.statusCode == 200) {
         // Intentar obtener empresa_id de la respuesta
@@ -562,7 +550,7 @@ Future<Map<String, dynamic>> getSucursalesPorRif(String rif) async {
             data['sucursales'] is List &&
             data['sucursales'].isNotEmpty) {
           empresaId = data['sucursales'][0]['empresa_id'] as int?;
-          print('✅ empresa_id obtenido de la primera sucursal: $empresaId');
+
         }
 
         return {
@@ -581,6 +569,61 @@ Future<Map<String, dynamic>> getSucursalesPorRif(String rif) async {
       }
     } catch (e) {
       return {'exito': false, 'error': 'Error de conexión: $e'};
+    }
+  }
+
+// ─────────────────────────────────────────
+  // OBTENER TODOS LOS USUARIOS
+  // ─────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getAllUsers() async {
+    try {
+      final uri = Uri.parse('$baseUrl/api/all-users');
+      final token = await SessionService.getToken();
+
+      final response = await http
+          .get(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              if (token != null) 'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
+
+      final data = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {
+          'exito': true,
+          'data': data,
+          'total': data is List ? data.length : (data['total'] ?? 0),
+        };
+      } else if (response.statusCode == 401) {
+        return {'exito': false, 'error': 'Sesión expirada.'};
+      } else if (response.statusCode == 403) {
+        return {
+          'exito': false,
+          'error': 'No tienes permisos para ver usuarios',
+        };
+      } else if (response.statusCode == 404) {
+        return {'exito': false, 'error': 'Endpoint no encontrado'};
+      } else {
+        return {
+          'exito': false,
+          'error': data['error'] ?? 'Error al obtener usuarios',
+          'codigo': response.statusCode,
+        };
+      }
+    } on SocketException {
+      return {'exito': false, 'error': 'No se pudo conectar al servidor.'};
+    } on FormatException {
+      return {
+        'exito': false,
+        'error': 'Error al procesar la respuesta del servidor.',
+      };
+    } catch (e) {
+      return {'exito': false, 'error': 'Error inesperado: $e'};
     }
   }
 
