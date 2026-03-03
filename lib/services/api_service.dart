@@ -15,7 +15,7 @@ class ApiService {
   // local
   // local
   // static const String baseUrl = 'http://192.168.1.249:5000';
-    static const String baseUrl = 'http://192.168.1.2:5000';
+    static const String baseUrl = 'http://192.168.1.4:5000';
   // =======================================================================
   // =======================================================================
 
@@ -393,7 +393,7 @@ Future<Map<String, dynamic>> crearSucursal(
     }
   }
 
-  
+
   // ─────────────────────────────────────────
   // HEALTH CHECK
   // ─────────────────────────────────────────

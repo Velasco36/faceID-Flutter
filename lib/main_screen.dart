@@ -4,7 +4,7 @@ import 'custom_tab_bar.dart';
 import './screens/home_screen.dart';
 import './screens/history_screen.dart';
 import './screens/brances/branches_screen.dart';
-import 'screens/company/session_company.dart';
+import './screens/users/users_screen.dart';
 import 'services/session_service.dart';
 
 class MainScreen extends StatefulWidget {
@@ -28,8 +28,7 @@ class MainScreenState extends State<MainScreen> {
 Future<void> _cargarRol() async {
     try {
       final rol = await SessionService.getRol();
-      print('🔑 [MainScreen] Rol obtenido: $rol');
-      print('🔑 [MainScreen] Es admin: ${rol == 'admin_empresa'}');
+
       setState(() {
         _esAdmin = rol == 'admin_empresa';
         _isLoading = false;
@@ -46,8 +45,8 @@ Future<void> _cargarRol() async {
   List<Widget> get _screens => [
     const HomeScreen(), // tab 0 - Inicio
     const MovimientosScreen(), // tab 1 - Historial
-  
-    const SucursalesScreen(), // tab 3 - Sucursales
+    const SucursalesScreen(), // tab 2 - Sucursales
+    const UsersScreen(), // tab 3 - Usuarios
 
 
   ];

@@ -1,13 +1,12 @@
 // lib/custom_tab_bar.dart
 import 'package:flutter/material.dart';
-import './main_screen.dart';
 
 const Color kPrimary = Color(0xFF137FEC);
 const Color kInactive = Color(0xFF9CA3AF);
 
 class CustomTabBar extends StatelessWidget {
-  final int currentIndex; // ✅ recibe el índice
-  final ValueChanged<int> onTap; // ✅ recibe el callback
+  final int currentIndex;
+  final ValueChanged<int> onTap;
 
   const CustomTabBar({
     super.key,
@@ -18,27 +17,50 @@ class CustomTabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
+    const int itemCount = 4;
+    const double itemWidth = 1 / itemCount; // fracción por item
+
+    // Centro del indicador como fracción del ancho total
+    final double indicatorFraction =
+        (currentIndex + 0.5) / itemCount;
+    final double indicatorLeft =
+        screenWidth * indicatorFraction - 5;
 
     return SizedBox(
       height: 90,
       child: Stack(
+        clipBehavior: Clip.none,
         children: [
+          // ── Fondo con curva animada ──
           Positioned.fill(
-            child: CustomPaint(
-              painter: NavBarPainter(activeIndex: currentIndex),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(
+                begin: currentIndex.toDouble(),
+                end: currentIndex.toDouble(),
+              ),
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeInOutCubic,
+              builder: (context, value, _) {
+                return CustomPaint(
+                  painter: NavBarPainter(activeIndex: value),
+                );
+              },
             ),
           ),
+
+          // ── Indicador dot animado ──
           AnimatedPositioned(
-            duration: const Duration(milliseconds: 500),
-            curve: Curves.easeInOut,
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeInOutCubic,
             top: 0,
-            left: _getIndicatorLeft(screenWidth, currentIndex),
+            left: indicatorLeft,
             child: Container(
               width: 10,
               height: 10,
               decoration: BoxDecoration(
                 color: Colors.white,
                 shape: BoxShape.circle,
+                border: Border.all(color: const Color.fromARGB(255, 233, 231, 231), width: 2),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.1),
@@ -49,6 +71,8 @@ class CustomTabBar extends StatelessWidget {
               ),
             ),
           ),
+
+          // ── Items ──
           Positioned(
             bottom: 0,
             left: 0,
@@ -59,6 +83,7 @@ class CustomTabBar extends StatelessWidget {
                 _buildItem(0, Icons.home_outlined, 'Inicio'),
                 _buildItem(1, Icons.history, 'Historial'),
                 _buildItem(2, Icons.location_on_outlined, 'Sucursal'),
+                _buildItem(3, Icons.person_outline, 'Usuarios'),
               ],
             ),
           ),
@@ -67,29 +92,34 @@ class CustomTabBar extends StatelessWidget {
     );
   }
 
-  double _getIndicatorLeft(double screenWidth, int index) {
-    final itemWidth = screenWidth / 3;
-    return itemWidth * index + itemWidth / 2 - 5;
-  }
-
   Widget _buildItem(int index, IconData icon, String label) {
     final bool isActive = currentIndex == index;
     return Expanded(
       child: GestureDetector(
-        onTap: () => onTap(index), // ✅ usa el callback directo
+        onTap: () => onTap(index),
         behavior: HitTestBehavior.opaque,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: isActive ? kPrimary : kInactive, size: 24),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: Icon(
+                icon,
+                key: ValueKey(isActive),
+                color: isActive ? kPrimary : kInactive,
+                size: isActive ? 26 : 24,
+              ),
+            ),
             const SizedBox(height: 4),
-            Text(
-              label,
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 300),
               style: TextStyle(
                 fontSize: 10,
-                fontWeight: FontWeight.w500,
+                fontWeight:
+                    isActive ? FontWeight.w700 : FontWeight.w500,
                 color: isActive ? kPrimary : kInactive,
               ),
+              child: Text(label),
             ),
           ],
         ),
@@ -98,8 +128,11 @@ class CustomTabBar extends StatelessWidget {
   }
 }
 
+// ─── Painter con curva interpolada ───────────────────────────────────────────
+
 class NavBarPainter extends CustomPainter {
-  final int activeIndex;
+  /// activeIndex puede ser decimal durante la animación (TweenAnimationBuilder)
+  final double activeIndex;
 
   NavBarPainter({required this.activeIndex});
 
@@ -110,13 +143,14 @@ class NavBarPainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     final shadowPaint = Paint()
-      ..color = Colors.black.withOpacity(0.05)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+      ..color = Colors.black.withOpacity(0.06)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
 
-    final double itemWidth = size.width / 3;
-    final double dipCenter = itemWidth * activeIndex + itemWidth / 2;
-    const double dipRadius = 28.0;
-    const double dipDepth = 18.0;
+    const int itemCount = 4;
+    final double itemWidth = size.width / itemCount;
+    final double dipCenter = itemWidth * (activeIndex + 0.5);
+    const double dipRadius = 30.0;
+    const double dipDepth = 16.0;
 
     final path = Path();
     path.moveTo(0, dipDepth);
@@ -143,6 +177,5 @@ class NavBarPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(NavBarPainter oldDelegate) =>
-      oldDelegate.activeIndex != activeIndex;
+  bool shouldRepaint(NavBarPainter old) => old.activeIndex != activeIndex;
 }
