@@ -8,6 +8,7 @@ import 'screens/brances/branches_screen.dart';
 import 'screens/animate/FaceScanAnimation.dart';
 import 'screens/auth/register_user_screen.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/auth/branches_public.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 
 List<CameraDescription> cameras = [];
@@ -52,6 +53,7 @@ class MyApp extends StatelessWidget {
         '/company': (context) =>
             const MainScreen(), // ✅ antes era SessionCompany
         '/branches': (context) => const SucursalesScreen(),
+        '/branchesPublic': (context) => const SucursalesPublicScreen(),
       },
     );
   }

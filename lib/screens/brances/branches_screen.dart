@@ -276,7 +276,7 @@ class _SucursalesScreenState extends State<SucursalesScreen> {
 
             // ── FAB ──
             Positioned(
-              bottom: 112,
+              bottom: 90,
               right: 24,
               child: FloatingActionButton(
                 onPressed: () => Navigator.push(
@@ -289,7 +289,7 @@ class _SucursalesScreenState extends State<SucursalesScreen> {
                 }),
                 backgroundColor: _primary,
                 shape: const CircleBorder(),
-                child: const Icon(Icons.add, color: Colors.white, size: 32),
+                child: const Icon(Icons.add, color: Colors.white, size: 28),
               ),
             ),
           ],
@@ -299,7 +299,7 @@ class _SucursalesScreenState extends State<SucursalesScreen> {
   }
 }
 
-// ─── Card sin icono de 3 puntos ─────────────────────────────────────────────
+// ─── Card con icono de flecha a la derecha ──────────────────────────────────
 
 class _SucursalCard extends StatelessWidget {
   final String nombre;
@@ -347,6 +347,7 @@ class _SucursalCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 16),
+            // Información de la sucursal
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -395,6 +396,15 @@ class _SucursalCard extends StatelessWidget {
                     ],
                   ),
                 ],
+              ),
+            ),
+            // ➡️ Icono de flecha a la derecha
+            Container(
+              margin: const EdgeInsets.only(left: 8),
+              child: const Icon(
+                Icons.arrow_forward_ios,
+                color: Color(0xFF9CA3AF),
+                size: 18,
               ),
             ),
           ],

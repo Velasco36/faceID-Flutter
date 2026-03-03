@@ -112,7 +112,7 @@ void _onContinue() async {
 
             final sucursalSeleccionada = await Navigator.pushNamed(
               context,
-              '/branches',
+              '/branchesPublic',
               arguments: {
                 'rif': rifCompleto,
                 'empresa': empresa,

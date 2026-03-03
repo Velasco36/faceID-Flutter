@@ -138,7 +138,7 @@ class _UsersScreenState extends State<UsersScreen> {
 
             // FAB - Floating Action Button
             Positioned(
-              bottom: 24,
+              bottom: 90,
               right: 24,
               child: FloatingActionButton(
                 onPressed: _navigateToCreateUser,
